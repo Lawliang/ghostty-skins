@@ -77,12 +77,46 @@ struct ModelTests {
         let capped = tree(Array(repeating: "x", count: 3), total: 12_345)
         #expect(MindControl.Panel.statusText(for: .ready(capped)) == "proj · showing 3 of 12,345 files")
         #expect(MindControl.Panel.statusText(for: .scanning) == nil)
+        var partial = tree(Array(repeating: "x", count: 3), total: 4)
+        partial.totalIsLowerBound = true
+        #expect(MindControl.Panel.statusText(for: .ready(partial)) == "proj · showing the first 3 files")
 
         #expect(MindControl.Panel.centerMessage(for: .ready(full)) == nil)
         #expect(MindControl.Panel.centerMessage(for: .scanning) == "Mapping project…")
         #expect(MindControl.Panel.centerMessage(for: .noProject) == "This terminal hasn't reported a working directory.")
         #expect(MindControl.Panel.centerMessage(for: .empty("proj")) == "proj has no files to map.")
         #expect(MindControl.Panel.centerMessage(for: .failed("Can't read /x.")) == "Can't read /x.")
+    }
+
+    @Test func sameRootWhileScanningReusesScan() async {
+        let counter = CallCounter()
+        let gate = DispatchSemaphore(value: 0)
+        let model = Model(scan: { _ in
+            counter.increment()
+            gate.wait()
+            return FileTree(rootName: "proj", rootPath: "/tmp/mc-model-test", files: ["x.swift"], totalFileCount: 1)
+        })
+        model.load(pwd: pwd)
+        let first = model.loadingTask
+        model.load(pwd: pwd)                      // e.g. the drawer reopened mid-scan
+        gate.signal()
+        await first?.value
+        await model.loadingTask?.value
+        #expect(counter.count == 1)
+        if case .ready = model.state {} else { Issue.record("expected ready, got \(model.state)") }
+    }
+
+    @Test func newerLoadWins() async throws {
+        let model = Model(scan: { url in
+            if url.path.hasSuffix("slow") { Thread.sleep(forTimeInterval: 0.3) }
+            return FileTree(rootName: url.lastPathComponent, rootPath: url.path, files: ["x.swift"], totalFileCount: 1)
+        })
+        model.load(pwd: URL(fileURLWithPath: "/tmp/mc-slow"))
+        model.load(pwd: URL(fileURLWithPath: "/tmp/mc-fast"))
+        await model.loadingTask?.value
+        try await Task.sleep(nanoseconds: 500_000_000)  // let the slow scan finish too
+        guard case .ready(let tree) = model.state else { Issue.record("expected ready"); return }
+        #expect(tree.rootName == "mc-fast")
     }
 }
 #endif

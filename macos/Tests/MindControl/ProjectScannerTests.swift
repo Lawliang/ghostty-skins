@@ -14,7 +14,10 @@ struct ProjectScannerTests {
             url = FileManager.default.temporaryDirectory.appendingPathComponent("mc-scan-\(UUID().uuidString)")
             try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         }
-        deinit { try? FileManager.default.removeItem(at: url) }
+        deinit {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
+            try? FileManager.default.removeItem(at: url)
+        }
 
         func file(_ path: String) throws {
             let target = url.appendingPathComponent(path)
@@ -90,8 +93,8 @@ struct ProjectScannerTests {
         let tree = try scanner.scan(pwd: dir.url)
         #expect(tree.files.count == 3)
         #expect(tree.files.contains("z-top.txt"))
-        #expect(tree.totalFileCount == 6)
         #expect(tree.truncated)
+        #expect(tree.totalIsLowerBound)       // the walk stops at the cap instead of counting everything
     }
 
     @Test func brokenGitFallsBackToWalk() throws {
@@ -107,6 +110,58 @@ struct ProjectScannerTests {
         #expect(throws: ScanError.noDirectory(missing.path)) {
             try ProjectScanner().scan(pwd: missing)
         }
+    }
+
+    @Test func gitCapReportsExactTotal() throws {
+        let dir = try TempDir()
+        try dir.git("init", "-q")
+        for i in 0..<6 { try dir.file("f\(i).txt") }
+        var scanner = ProjectScanner()
+        scanner.fileCap = 3
+        let tree = try scanner.scan(pwd: dir.url)
+        #expect(tree.files.count == 3)
+        #expect(tree.totalFileCount == 6)
+        #expect(!tree.totalIsLowerBound)
+    }
+
+    @Test func walkStopsEarlyOnHugeTrees() throws {
+        let dir = try TempDir()
+        for i in 0..<50 { try dir.file("top\(i).txt") }
+        for i in 0..<200 { try dir.file("a/b/c/deep\(i).txt") }
+        var scanner = ProjectScanner()
+        scanner.fileCap = 10
+        let tree = try scanner.scan(pwd: dir.url)
+        #expect(tree.files.count == 10)
+        #expect(tree.files.allSatisfy { $0.hasPrefix("top") })   // breadth-first: shallow files win
+        #expect(tree.totalFileCount <= 11)                       // stopped right after the cap, never walked a/b/c
+    }
+
+    @Test func unreadableDirectoryThrows() throws {
+        let dir = try TempDir()
+        let locked = dir.url.appendingPathComponent("locked")
+        try FileManager.default.createDirectory(at: locked, withIntermediateDirectories: true)
+        try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: locked.path)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: locked.path) }
+        #expect(throws: ScanError.unreadable(locked.path)) {
+            try ProjectScanner().scan(pwd: locked)
+        }
+    }
+
+    @Test func stopRequestCancelsScan() throws {
+        let dir = try TempDir()
+        try dir.file("a.txt")
+        #expect(throws: CancellationError.self) {
+            try ProjectScanner().scan(pwd: dir.url, shouldStop: { true })
+        }
+    }
+
+    @Test func homeLibraryIsSkipped() throws {
+        let dir = try TempDir()
+        try dir.file("Library/Caches/huge.bin")
+        try dir.file("Documents/notes.md")
+        var scanner = ProjectScanner()
+        scanner.homeDirectory = dir.url.path
+        #expect(try scanner.scan(pwd: dir.url).files == ["Documents/notes.md"])
     }
 }
 #endif

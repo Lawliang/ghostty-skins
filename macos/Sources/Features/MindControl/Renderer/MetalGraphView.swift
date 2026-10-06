@@ -8,10 +8,10 @@ extension MindControl {
         var onEscape: (() -> Void)?
 
         override func keyDown(with event: NSEvent) {
-            if event.keyCode == 53 {   // Escape
+            // Esc closes; other keys are swallowed so the open panel doesn't beep.
+            // Menu shortcuts still work: they arrive via performKeyEquivalent first.
+            if event.keyCode == 53 {
                 onEscape?()
-            } else {
-                super.keyDown(with: event)
             }
         }
 

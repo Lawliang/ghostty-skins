@@ -56,6 +56,9 @@ extension MindControl {
 
         static func statusText(for state: Model.State) -> String? {
             guard case .ready(let tree) = state else { return nil }
+            if tree.totalIsLowerBound {
+                return "\(tree.rootName) · showing the first \(tree.files.count.formatted()) files"
+            }
             if tree.truncated {
                 return "\(tree.rootName) · showing \(tree.files.count.formatted()) of \(tree.totalFileCount.formatted()) files"
             }

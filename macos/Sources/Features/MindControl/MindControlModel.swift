@@ -22,16 +22,17 @@ extension MindControl {
 
         private let scan: @Sendable (URL) throws -> FileTree
         private var cache: [String: (tree: FileTree, graph: Graph)] = [:]
+        private var scanTask: Task<Result<(FileTree, Graph), Error>, Never>?
+        /// Root whose scan is currently running, so reopening the drawer mid-scan doesn't start another.
+        private var inFlightKey: String?
 
         init(scan: @escaping @Sendable (URL) throws -> FileTree = { try ProjectScanner().scan(pwd: $0) }) {
             self.scan = scan
         }
 
         func load(pwd: URL?) {
-            loadingTask?.cancel()
-            loadingTask = nil
-
             guard let pwd else {
+                cancelScan()
                 state = .noProject
                 publish(nil)
                 return
@@ -39,29 +40,46 @@ extension MindControl {
 
             let key = ProjectScanner.projectRoot(for: pwd).path
             if let hit = cache[key] {
+                cancelScan()
                 apply(hit.tree, hit.graph)
                 return
             }
+            if key == inFlightKey { return }
 
+            cancelScan()
             state = .scanning
+            inFlightKey = key
             let scan = self.scan
+            let scanTask = Task.detached(priority: .userInitiated) { () -> Result<(FileTree, Graph), Error> in
+                Result {
+                    let tree = try scan(pwd)
+                    try Task.checkCancellation()
+                    return (tree, TreeLayout.graph(for: tree))
+                }
+            }
+            self.scanTask = scanTask
             loadingTask = Task { [weak self] in
-                let result = await Task.detached(priority: .userInitiated) { () -> Result<(FileTree, Graph), Error> in
-                    Result {
-                        let tree = try scan(pwd)
-                        return (tree, TreeLayout.graph(for: tree))
-                    }
-                }.value
+                let result = await scanTask.value
                 guard !Task.isCancelled, let self else { return }
+                self.inFlightKey = nil
                 switch result {
                 case .success(let (tree, graph)):
                     self.cache[key] = (tree, graph)
                     self.apply(tree, graph)
+                case .failure(let error) where error is CancellationError:
+                    return
                 case .failure(let error):
                     self.state = .failed(Self.message(for: error))
                     self.publish(nil)
                 }
             }
+        }
+
+        private func cancelScan() {
+            scanTask?.cancel()
+            loadingTask?.cancel()
+            scanTask = nil
+            inFlightKey = nil
         }
 
         private func apply(_ tree: FileTree, _ graph: Graph) {
@@ -80,8 +98,12 @@ extension MindControl {
         }
 
         private static func message(for error: Error) -> String {
-            if case ScanError.noDirectory(let path) = error { return "Can't read \(path)." }
-            return error.localizedDescription
+            switch error {
+            case ScanError.noDirectory(let path), ScanError.unreadable(let path):
+                return "Can't read \(path)."
+            default:
+                return error.localizedDescription
+            }
         }
     }
 }

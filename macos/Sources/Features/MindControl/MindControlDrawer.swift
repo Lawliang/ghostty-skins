@@ -13,25 +13,33 @@ extension MindControl {
         @State private var isOpen = false
 
         var body: some View {
-            HStack(spacing: 0) {
-                DrawerTab(isOpen: isOpen, action: toggle)
-
+            // The open panel covers the whole terminal; the tab floats on top, on the panel's leading edge.
+            ZStack(alignment: .trailing) {
                 if isOpen {
-                    Panel(model: model, onClose: toggle)
+                    Panel(model: model, onClose: close)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .transition(.move(edge: .trailing))
                 }
+
+                DrawerTab(isOpen: isOpen, action: isOpen ? close : open)
+                    .frame(maxWidth: .infinity, alignment: isOpen ? .leading : .trailing)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
         }
 
-        private func toggle() {
-            let opening = !isOpen
-            if opening { model.load(pwd: pwd()) }
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.86)) {
-                isOpen = opening
-            }
-            if !opening { onClose() }
+        private static let slide = Animation.spring(response: 0.35, dampingFraction: 0.86)
+
+        private func open() {
+            guard !isOpen else { return }
+            model.load(pwd: pwd())
+            withAnimation(Self.slide) { isOpen = true }
+        }
+
+        /// Safe to call repeatedly (e.g. key-repeated Esc): only the first call closes.
+        private func close() {
+            guard isOpen else { return }
+            withAnimation(Self.slide) { isOpen = false }
+            onClose()
         }
     }
 
