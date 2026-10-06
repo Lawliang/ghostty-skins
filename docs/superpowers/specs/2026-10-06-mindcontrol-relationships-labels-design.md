@@ -1,7 +1,7 @@
 # MindControl: Relationships, Layout, Labels — Design
 
 Date: 2026-10-06
-Status: Draft — pending spec review
+Status: Implemented
 Branch: `mindcontrol` (Lostty worktree `.claude/worktrees/mindcontrol`)
 Builds on: `2026-10-06-lostty-mindcontrol-design.md` (renderer, scanner, sidebar integration)
 
@@ -223,3 +223,21 @@ source, document). Always visible while the panel is open.
    styling (contains vs curved uses), signals on uses only, legend.
 2. **Layout:** ConeTreeLayout + Relaxation replace TreeLayout.
 3. **Inspection:** picking, highlight, hover/pin, info card, labels.
+
+## 12. Refinements during implementation
+
+1. Subfolder distance is `fileBallRadius(parent files) + 2 + 1.2·(1 + w)^0.4` (was `3 + 1.2·√w`):
+   clear of the parent's file ball, and gentler growth so very large folders (Lostty's `test/`)
+   don't stretch the map.
+2. Relaxation's 10k-node budget is < 1.5 s in the Debug test build; it uses a sorted cell list and
+   stops early once no node moves more than 0.001.
+3. Uses-springs are normalised by both endpoints' link counts (`k / √(degA·degB)`), with
+   `k = 0.01`, so densely linked folders keep their shape (`denselyLinkedFilesKeepTheirSpread`).
+4. Python also resolves absolute imports beside the importing file.
+5. Edges render from two buffers (contains, uses); `MCEdgeInstance.kind` is still stored.
+6. `MCFrameUniforms.usesScale = max(0.08, (300/n)^0.75)` dims uses-edges (fully) and signals
+   (partly) on projects with many dependencies; each edge's signal chance is scaled by
+   `usesScale²` so the number of signals in flight stays roughly constant. Pinned by
+   `DensityTests.denseDependenciesDoNotBlowOut` (differential: < 2 pts added).
+7. `GraphNode.descendantFiles` (label priority, info card) and `GraphBuffers.sourceNodes`.
+8. The hover "tooltip" is the focus node's label showing its relative path.

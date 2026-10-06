@@ -91,5 +91,33 @@ struct RelaxationTests {
             try Relaxation.relax(.sample, shouldStop: { true })
         }
     }
+
+    /// A folder whose files all reference each other must keep its shape, not collapse into a pile.
+    @Test func denselyLinkedFilesKeepTheirSpread() throws {
+        var rng = MindControl.SplitMix64(seed: 5)
+        var nodes = [GraphNode(id: ".", label: "root", kind: .root, position: SIMD3(0, 40, 0))]
+        for i in 0..<200 {
+            let direction = simd_normalize(SIMD3<Float>(Float.random(in: -1...1, using: &rng),
+                                                        Float.random(in: -1...1, using: &rng),
+                                                        Float.random(in: -1...1, using: &rng)))
+            nodes.append(GraphNode(id: "f\(i)", label: "f\(i)", kind: .source,
+                                   position: direction * Float.random(in: 2...6, using: &rng)))
+        }
+        var edges: [GraphEdge] = []
+        for i in 0..<200 {
+            for _ in 0..<40 {
+                let j = Int.random(in: 0..<200, using: &rng)
+                if j != i { edges.append(GraphEdge(from: "f\(i)", to: "f\(j)", kind: .uses)) }
+            }
+        }
+        func spread(_ g: Graph) -> Float {
+            let files = g.nodes.dropFirst().map(\.position)
+            let centre = files.reduce(.zero, +) / Float(files.count)
+            return (files.map { simd_length_squared($0 - centre) }.reduce(0, +) / Float(files.count)).squareRoot()
+        }
+        let graph = Graph(nodes: nodes, edges: edges)
+        let relaxed = try Relaxation.relax(graph)
+        #expect(spread(relaxed) >= 0.75 * spread(graph))
+    }
 }
 #endif

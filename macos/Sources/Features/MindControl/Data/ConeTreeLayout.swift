@@ -24,7 +24,7 @@ extension MindControl {
 
         /// How far a subfolder sits from its parent: clear of the parent's file ball, further for bigger subtrees.
         static func subfolderDistance(parentFiles: Int, childTotalFiles: Int) -> Float {
-            fileBallRadius(fileCount: parentFiles) + 2 + 1.2 * Float(1 + childTotalFiles).squareRoot()
+            fileBallRadius(fileCount: parentFiles) + 2 + 1.2 * pow(Float(1 + childTotalFiles), 0.4)
         }
 
         private final class Folder {

@@ -8,7 +8,7 @@ extension MindControl {
         static let iterations = 60
         static let minSpacing: Float = 0.45
         static let springRestLength: Float = 2.5
-        static let springStrength: Float = 0.02
+        static let springStrength: Float = 0.01
         static let folderMobility: Float = 0.2
         static let maxMovePerStep: Float = 1.0
         static let settledMove: Float = 0.001
@@ -36,9 +36,16 @@ extension MindControl {
             }
             var index: [String: Int] = [:]
             for (i, node) in graph.nodes.enumerated() { index[node.id] = i }
-            let springs: [(Int, Int)] = graph.edges.compactMap { edge in
+            let links: [(Int, Int)] = graph.edges.compactMap { edge in
                 guard edge.kind == .uses, let a = index[edge.from], let b = index[edge.to] else { return nil }
                 return (a, b)
+            }
+            // Normalise by both ends' link counts, so a file with 40 links feels about one spring's
+            // worth of pull in total and densely linked folders keep their shape.
+            var degree = [Float](repeating: 0, count: count)
+            for (a, b) in links { degree[a] += 1; degree[b] += 1 }
+            let springs: [(Int, Int, Float)] = links.map { a, b in
+                (a, b, springStrength / max(1, (degree[a] * degree[b]).squareRoot()))
             }
 
             var delta = [SIMD3<Float>](repeating: .zero, count: count)
@@ -92,11 +99,11 @@ extension MindControl {
                     start = members.upperBound
                 }
 
-                for (a, b) in springs {
+                for (a, b, strength) in springs {
                     let offset = positions[b] - positions[a]
                     let distance = simd_length(offset)
                     guard distance > 1e-5 else { continue }
-                    let pull = offset / distance * ((distance - springRestLength) * springStrength)
+                    let pull = offset / distance * ((distance - springRestLength) * strength)
                     delta[a] += pull
                     delta[b] -= pull
                 }
