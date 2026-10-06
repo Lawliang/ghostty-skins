@@ -52,7 +52,7 @@ vertex SignalOut mcSignalVertex(uint vid [[vertex_id]],
 
     float period = mix(2.5, 6.0, hash11(e.signalSeed * 3.1 + 2.3));
     out.head = fract(u.time / period + e.signalSeed) * 1.8 - 0.2;
-    out.color = kSignalColor * min(na.intensity, nb.intensity);
+    out.color = kSignalColor * min(na.intensity, nb.intensity) * min(na.highlight, nb.highlight);
     out.fog = mix(fogFactor(u, na.position), fogFactor(u, nb.position), t);
     return out;
 }

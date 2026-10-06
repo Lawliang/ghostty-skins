@@ -38,6 +38,8 @@ extension MindControl {
     struct GraphBuffers {
         let nodes: [MCNodeInstance]
         let edges: [MCEdgeInstance]
+        /// Graph nodes in buffer order (duplicates dropped).
+        let sourceNodes: [GraphNode]
         /// Folder→child edges, drawn as straight hairlines.
         let containsEdges: [MCEdgeInstance]
         /// File→file dependencies, drawn as curves that carry signals.
@@ -50,16 +52,20 @@ extension MindControl {
             var nodes: [MCNodeInstance] = []
             nodes.reserveCapacity(graph.nodes.count)
 
+            var sourceNodes: [GraphNode] = []
             for node in graph.nodes where index[node.id] == nil {
                 index[node.id] = UInt32(nodes.count)
+                sourceNodes.append(node)
                 nodes.append(MCNodeInstance(
                     position: node.position,
                     radius: NodeStyle.radius(for: node.kind),
                     color: NodeStyle.color(for: node.kind),
                     phase: StableHash.unit(node.id) * 2 * .pi,
-                    intensity: node.weight
+                    intensity: node.weight,
+                    highlight: 1
                 ))
             }
+            self.sourceNodes = sourceNodes
 
             let edges: [MCEdgeInstance] = graph.edges.compactMap { edge in
                 guard let a = index[edge.from], let b = index[edge.to], a != b else { return nil }

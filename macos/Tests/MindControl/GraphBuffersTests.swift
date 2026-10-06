@@ -109,5 +109,12 @@ struct GraphBuffersTests {
     @Test func sampleGraphHasUsesEdges() {
         #expect(GraphBuffers(graph: .sample).usesEdges.count == 3)
     }
+
+    @Test func highlightStartsAtOneAndSourceNodesMatchBufferOrder() {
+        let graph = Graph(nodes: [node("a"), node("a"), node("b")], edges: [])
+        let buffers = GraphBuffers(graph: graph)
+        #expect(buffers.nodes.allSatisfy { $0.highlight == 1 })
+        #expect(buffers.sourceNodes.map(\.id) == ["a", "b"])
+    }
 }
 #endif

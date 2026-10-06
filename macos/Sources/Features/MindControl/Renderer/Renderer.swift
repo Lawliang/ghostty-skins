@@ -83,6 +83,46 @@ extension MindControl {
             dustBuffer = makeBuffer(dust)
 
             camera.frame(center: buffers.center, radius: buffers.boundingRadius)
+
+            nodes = buffers.sourceNodes
+            nodePositions = buffers.nodes.map(\.position)
+            nodeRadii = buffers.nodes.map(\.radius)
+            adjacency = Array(repeating: [], count: nodeCount)
+            for edge in buffers.edges {
+                adjacency[Int(edge.a)].append(Int(edge.b))
+                adjacency[Int(edge.b)].append(Int(edge.a))
+            }
+            focusedIndex = nil
+        }
+
+        static let focusHighlight: Float = 1.6
+        static let neighbourHighlight: Float = 1.25
+        static let dimmedHighlight: Float = 0.12
+
+        /// Graph nodes in GPU buffer order (index i here is instance i in the node buffer).
+        private(set) var nodes: [GraphNode] = []
+        private(set) var nodePositions: [SIMD3<Float>] = []
+        private(set) var nodeRadii: [Float] = []
+        private(set) var focusedIndex: Int?
+        private var adjacency: [[Int]] = []
+
+        func neighbours(of index: Int) -> [Int] {
+            adjacency.indices.contains(index) ? adjacency[index] : []
+        }
+
+        /// Brightens `index` and its direct neighbours and dims everything else; nil restores everything.
+        func setFocus(_ index: Int?) {
+            guard let nodeBuffer, nodeCount > 0 else { focusedIndex = nil; return }
+            let instances = nodeBuffer.contents().bindMemory(to: MCNodeInstance.self, capacity: nodeCount)
+            guard let index, index >= 0, index < nodeCount else {
+                for i in 0..<nodeCount { instances[i].highlight = 1 }
+                focusedIndex = nil
+                return
+            }
+            for i in 0..<nodeCount { instances[i].highlight = Self.dimmedHighlight }
+            for neighbour in adjacency[index] { instances[neighbour].highlight = Self.neighbourHighlight }
+            instances[index].highlight = Self.focusHighlight
+            focusedIndex = index
         }
 
         // MARK: MTKViewDelegate

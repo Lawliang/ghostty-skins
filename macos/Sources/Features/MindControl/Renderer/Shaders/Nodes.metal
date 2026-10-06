@@ -12,6 +12,7 @@ struct NodeOut {
     float3 color;
     float phase;
     float intensity;
+    float highlight;
     float fog;
 };
 
@@ -33,6 +34,7 @@ vertex NodeOut mcNodeVertex(uint vid [[vertex_id]],
     out.coreRadiusPx = radiusPx;
     out.color = n.color;
     out.intensity = n.intensity;
+    out.highlight = n.highlight;
     out.phase = n.phase;
     out.fog = fogFactor(u, n.position);
     return out;
@@ -55,5 +57,5 @@ fragment float4 mcNodeFragment(NodeOut in [[stage_in]],
     float3 coreColor = mix(in.color, float3(1.0), 0.7) * 2.4 * mix(0.4, 1.0, u.glowScale);
     float3 glow = in.color * (halo + ring) * edgeFade * u.glowScale;
     float3 rgb = coreColor * core + glow * (1.0 - core);
-    return float4(rgb * in.intensity * in.fog, 0.0);
+    return float4(rgb * in.intensity * in.highlight * in.fog, 0.0);
 }

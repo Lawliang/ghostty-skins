@@ -19,6 +19,7 @@ typedef struct {
     vector_float3 color;   // linear HDR
     float phase;           // radians, desynchronises the pulse
     float intensity;       // brightness multiplier, 0...1
+    float highlight;       // 1 normal; >1 focused or neighbour; <1 dimmed
 } MCNodeInstance;
 
 typedef struct {

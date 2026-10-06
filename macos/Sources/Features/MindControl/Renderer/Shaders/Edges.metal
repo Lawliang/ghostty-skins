@@ -43,7 +43,7 @@ vertex EdgeOut mcContainsEdgeVertex(uint vid [[vertex_id]],
 
     float4 clip = atB ? cb : ca;
     out.position = fromPixels((atB ? pb : pa) + normal * side * halfQuad, clip, u.viewportSize);
-    out.color = kContainsColor * min(na.intensity, nb.intensity);
+    out.color = kContainsColor * min(na.intensity, nb.intensity) * min(na.highlight, nb.highlight);
     out.across = side * halfQuad;
     out.fog = fogFactor(u, atB ? nb.position : na.position);
     return out;
@@ -79,7 +79,7 @@ vertex EdgeOut mcUsesEdgeVertex(uint vid [[vertex_id]],
     float halfQuad = (kUsesHalfWidth + kFeather) * u.pixelScale;
 
     out.position = fromPixels(c.point + c.normal * side * halfQuad, mix(ca, cb, t), u.viewportSize);
-    out.color = kUsesColor * min(na.intensity, nb.intensity);
+    out.color = kUsesColor * min(na.intensity, nb.intensity) * min(na.highlight, nb.highlight);
     out.across = side * halfQuad;
     out.fog = mix(fogFactor(u, na.position), fogFactor(u, nb.position), t);
     return out;

@@ -132,5 +132,25 @@ struct RendererTests {
         let uses = try renderChannelSums(using: renderer)
         #expect(uses.x / uses.z > contains.x / contains.z)   // red relative to blue
     }
+
+    @Test func focusDimsEverythingElse() throws {
+        let renderer = try Renderer()
+        renderer.setGraph(.sample)
+        let normal = try renderAverage(using: renderer)
+        let docs = try #require(renderer.nodes.firstIndex { $0.id == "Docs/0" })
+        renderer.setFocus(docs)
+        #expect(renderer.focusedIndex == docs)
+        #expect(try renderAverage(using: renderer) < normal)
+        renderer.setFocus(nil)
+        #expect(abs(try renderAverage(using: renderer) - normal) < 1e-9)
+    }
+
+    @Test func neighboursFollowEdges() throws {
+        let renderer = try Renderer()
+        renderer.setGraph(.sample)
+        let views0 = try #require(renderer.nodes.firstIndex { $0.id == "Views/0" })
+        let neighbourIDs = Set(renderer.neighbours(of: views0).map { renderer.nodes[$0].id })
+        #expect(neighbourIDs == ["Views", "Graph/1"])     // its folder, and the file it uses
+    }
 }
 #endif
