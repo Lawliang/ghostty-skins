@@ -3,19 +3,17 @@ import AppKit
 import SwiftUI
 
 /// Lostty's skin picker (spec §7), styled as a boon offering: Boons /
-/// Custom, live preview, Equip.
+/// Custom. Every pick applies to the pane right away and stays.
 struct SkinPopoverView: View {
     let surfaceID: UUID
     @ObservedObject var manager: SkinManager
     @ObservedObject var savedColors: SavedColorsStore
-    var onEquipped: (String) -> Void
     var onClose: () -> Void
 
     private enum Tab: Hashable { case presets, custom }
 
     @State private var tab: Tab = .presets
     @State private var draft: Skin?
-    @State private var committed = false
     @State private var hex = ""
 
     private static let card = Color(red: 30 / 255, green: 23 / 255, blue: 17 / 255).opacity(0.9)
@@ -32,21 +30,16 @@ struct SkinPopoverView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             header
-            if let locked = manager.lockedSkinName(surfaceID) {
-                lockedCard(locked)
-            } else {
-                tabSwitcher
-                if tab == .presets { presetGrid } else { customPanel }
-                problems
-                footer
-            }
+            tabSwitcher
+            if tab == .presets { presetGrid } else { customPanel }
+            problems
+            footer
         }
         .padding(20)
         .frame(width: 440)
         .background(panelBackground)
         .environment(\.colorScheme, .dark)
         .onAppear { hex = current.background.hex }
-        .onDisappear { if !committed { manager.setPreview(surfaceID, nil) } }
     }
 
     // MARK: Sections
@@ -85,32 +78,11 @@ struct SkinPopoverView: View {
     }
 
     private var subtitle: String {
-        if let locked = manager.lockedSkinName(surfaceID) { return "Locked · \(locked) from skins.toml" }
         let pwd = manager.panes[surfaceID]?.pwd ?? ""
         if pwd.isEmpty { return "A patron offers a skin for this pane" }
         let home = NSHomeDirectory()
         return (pwd == home || pwd.hasPrefix(home + "/"))
             ? "A patron offers a skin for ~" + pwd.dropFirst(home.count) : "A patron offers a skin for \(pwd)"
-    }
-
-    private func lockedCard(_ name: String) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 8) {
-                Image(systemName: "lock.fill").foregroundStyle(accent)
-                Text("Locked to \(name)").font(.system(size: 14, weight: .semibold))
-            }
-            Text("This folder is mapped in skins.toml, so it always shows its own skin. Edit the [[match]] entry to change it; your picks still apply in other folders.")
-                .font(.system(size: 12)).foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            Button("Reveal skins.toml in Finder") {
-                let file = SkinsRuntime.configDir.appendingPathComponent("skins.toml")
-                NSWorkspace.shared.activateFileViewerSelecting([file])
-            }
-        }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Rectangle().fill(Self.card))
-        .overlay(Rectangle().strokeBorder(Boon.bronze, lineWidth: 1))
     }
 
     private var presetGrid: some View {
@@ -131,7 +103,7 @@ struct SkinPopoverView: View {
         let selected = current.name == skin.name && current.palette == skin.palette
         let equipped = manager.equippedName(surfaceID) == skin.name
         let glow = Color(rgb: skin.accent)
-        return Button { preview(skin) } label: {
+        return Button { pick(skin) } label: {
             HStack(spacing: 14) {
                 BoonEmblem(skin: skin, rarity: entry.rarity, glyph: entry.glyph,
                            texture: manager.thumbnailImage(for: skin))
@@ -323,17 +295,6 @@ struct SkinPopoverView: View {
                     .contentShape(HexBar(notch: 12))
             }
             .buttonStyle(.plain)
-            Button { equip() } label: {
-                Text("EQUIP").font(Boon.display(14, .black)).kerning(3)
-                    .foregroundStyle(Self.ink)
-                    .frame(maxWidth: .infinity).frame(height: 40)
-                    .background(HexBar(notch: 12).fill(Boon.goldFill))
-                    .shadow(color: Boon.gold.opacity(draft == nil ? 0 : 0.45), radius: 10)
-                    .contentShape(HexBar(notch: 12))
-            }
-            .buttonStyle(.plain)
-            .disabled(draft == nil)
-            .opacity(draft == nil ? 0.5 : 1)
         }
     }
 
@@ -407,18 +368,18 @@ struct SkinPopoverView: View {
         return luminance > 140 ? Color(red: 0.04, green: 0.04, blue: 0.07) : .white
     }
 
-    private func preview(_ skin: Skin) {
-        committed = false
+    /// Applies `skin` to the pane immediately; it stays when the picker closes.
+    private func pick(_ skin: Skin) {
         draft = skin
         hex = skin.background.hex
-        manager.setPreview(surfaceID, skin)
+        manager.setOverride(surfaceID, skin)
     }
 
     private func edit(_ change: (inout Skin) -> Void) {
         var skin = current
         skin.name = "custom"
         change(&skin)
-        preview(skin)
+        pick(skin)
     }
 
     private func setBackground(_ color: RGB) {
@@ -438,15 +399,7 @@ struct SkinPopoverView: View {
             })
     }
 
-    private func equip() {
-        guard let draft else { return }
-        committed = true
-        manager.setOverride(surfaceID, draft)
-        onEquipped(SkinPresets.title(for: draft))
-    }
-
     private func reset() {
-        committed = true
         draft = nil
         manager.reset(surfaceID)
         hex = base.background.hex

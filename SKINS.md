@@ -50,14 +50,14 @@ The title-bar picker shows every skin as a boon you can choose. Use
 `skins set <id>` to equip any preset. A skin defined in `skins.toml` with
 the same name as a preset overrides it and appears in the picker tagged PROJECT.
 
-## Locked Folders
+## Folder Defaults
 
-If your `skins.toml` maps a folder with `[[match]]`, that folder's pane always
-shows its mapped skin and cannot be overridden. The picker shows a Locked card
-explaining that the folder is configured. `skins set`, `skins color`, and
-`skins texture` exit with `skins: this folder is locked to "<skin>" by skins.toml` (exit 1);
-`skins reset` still works. When you leave a locked folder, your previous override (if any)
-returns.
+If your `skins.toml` maps a folder with `[[match]]`, a pane in that folder
+shows its mapped skin by default. You can still change it from the picker or
+with `skins set`, `skins color`, or `skins texture`. Overrides belong to the
+pane, so a pick made in a mapped folder stays when you `cd` elsewhere, and a
+pick made elsewhere carries into a mapped folder. `skins reset` drops the
+override and brings the mapped skin back.
 
 ## Saved Colors
 
@@ -70,9 +70,9 @@ Lostty windows (max 24).
 
 ## Override
 
-- Click the chip at the right of the title bar: preview a skin, color, or
-  texture (live), then **Equip** to keep it. **Reset** undoes it. The chip
-  briefly shows "Equipped" after you apply.
+- Click the chip at the right of the title bar and pick a skin, color, or
+  texture: it applies to the pane right away and stays when you close the
+  picker. **Reset** undoes it.
 - Or in any pane: `skins` (interactive picker), `skins set <name>`,
   `skins color '#3a0f14'`, `skins texture grid`, `skins opacity 0.5`,
   `skins reset`, `skins list` (shows name, background, texture, rarity), `skins current`.
@@ -92,6 +92,36 @@ Overrides last until reset or until the pane closes. zsh and bash get the
   inherits that parent app's `GHOSTTY_RESOURCES_DIR`, which breaks the
   `skins` shell function in every new pane. Launch it from Finder, the
   Dock, or Spotlight instead.
+
+## Claude Trace
+
+While Claude Code is working in a pane, a light ray races around that
+pane's edge. The moment Claude finishes (or you interrupt it), the ray
+disappears. If Claude finishes (or asks for permission) while you are in
+another pane or app, that pane dims and shows **Ready for response** until
+you look at it. Each preset has its own trace; panes without a skin get a
+pink-and-cyan beam.
+
+On first launch Lostty offers to add four hooks to
+`~/.claude/settings.json` (it saves `settings.json.lostty-backup` first).
+The hooks do nothing outside Lostty. Manage them from
+**Lostty → Claude Integration…**, or run `ghostty +claude-hooks install`,
+`remove`, `status` or `preview`.
+
+Custom skins pick a trace in `skins.toml`:
+
+    [skins.my-skin]
+    background = "#101820"
+    trace = "bolt"            # beam comet sunset datastream sonar ember bubbles
+                              # bolt tide blade petal arrow tempest, or none
+    trace_color = "#ff00aa"   # default: the skin's accent
+    trace_color2 = "#00ffcc"  # default: accent2, or a lighter accent
+    trace_speed = 1.5         # 0.25–4
+    trace_length = 0.2        # 0.05–0.5
+
+A skin with the same name as a preset keeps the preset's trace unless it
+sets `trace`. `[defaults] trace = false` turns traces off. With Reduce
+Motion on, the border glows gently instead of racing.
 
 ## Updating from upstream Ghostty
 
