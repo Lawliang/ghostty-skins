@@ -38,7 +38,7 @@ extension MindControl {
             }
         }
 
-        static func graph(for tree: FileTree) -> Graph {
+        static func graph(for tree: FileTree, dependencies: [Dependency] = []) -> Graph {
             let root = Folder(id: rootID)
             for path in tree.files {
                 var folder = root
@@ -70,6 +70,11 @@ extension MindControl {
                 let direction = fibonacciSphere(index: i, count: topLevel.count)
                 place(entry, at: direction * rootRadius, outward: direction, parent: rootID,
                       fileWeight: fileWeight(siblings: root.files.count), nodes: &nodes, edges: &edges)
+            }
+            let ids = Set(nodes.map(\.id))
+            for dependency in dependencies where dependency.from != dependency.to
+                && ids.contains(dependency.from) && ids.contains(dependency.to) {
+                edges.append(GraphEdge(from: dependency.from, to: dependency.to, kind: .uses))
             }
             return Graph(nodes: nodes, edges: edges)
         }

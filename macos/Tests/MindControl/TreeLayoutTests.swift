@@ -96,5 +96,14 @@ struct TreeLayoutTests {
         #expect((weight("big/f0.txt") ?? 1) < 0.3)
         #expect((weight("big/f0.txt") ?? 0) >= TreeLayout.minimumFileWeight)
     }
+
+    @Test func dependenciesBecomeUsesEdges() {
+        let deps = [MindControl.Dependency(from: "src/a.swift", to: "src/b.swift"),
+                    MindControl.Dependency(from: "src/a.swift", to: "gone.swift")]
+        let graph = TreeLayout.graph(for: tree(["src/a.swift", "src/b.swift"]), dependencies: deps)
+        let uses = graph.edges.filter { $0.kind == .uses }
+        #expect(uses.count == 1)
+        #expect(uses.first?.from == "src/a.swift" && uses.first?.to == "src/b.swift")
+    }
 }
 #endif

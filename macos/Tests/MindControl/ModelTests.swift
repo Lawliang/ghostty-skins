@@ -118,5 +118,14 @@ struct ModelTests {
         guard case .ready(let tree) = model.state else { Issue.record("expected ready"); return }
         #expect(tree.rootName == "mc-fast")
     }
+
+    @Test func dependenciesReachTheGraph() async {
+        let model = Model(
+            scan: { _ in FileTree(rootName: "proj", rootPath: "/tmp/mc-model-test", files: ["a.swift", "b.swift"], totalFileCount: 2) },
+            dependencies: { _ in [MindControl.Dependency(from: "a.swift", to: "b.swift")] })
+        model.load(pwd: pwd)
+        await model.loadingTask?.value
+        #expect(model.graph?.edges.filter { $0.kind == .uses }.count == 1)
+    }
 }
 #endif

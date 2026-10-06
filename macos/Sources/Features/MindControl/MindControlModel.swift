@@ -26,8 +26,12 @@ extension MindControl {
         /// Root whose scan is currently running, so reopening the drawer mid-scan doesn't start another.
         private var inFlightKey: String?
 
-        init(scan: @escaping @Sendable (URL) throws -> FileTree = { try ProjectScanner().scan(pwd: $0) }) {
+        private let dependencies: @Sendable (FileTree) throws -> [Dependency]
+
+        init(scan: @escaping @Sendable (URL) throws -> FileTree = { try ProjectScanner().scan(pwd: $0) },
+             dependencies: @escaping @Sendable (FileTree) throws -> [Dependency] = { try DependencyScanner.scan(tree: $0) }) {
             self.scan = scan
+            self.dependencies = dependencies
         }
 
         func load(pwd: URL?) {
@@ -50,11 +54,14 @@ extension MindControl {
             state = .scanning
             inFlightKey = key
             let scan = self.scan
+            let dependencies = self.dependencies
             let scanTask = Task.detached(priority: .userInitiated) { () -> Result<(FileTree, Graph), Error> in
                 Result {
                     let tree = try scan(pwd)
                     try Task.checkCancellation()
-                    return (tree, TreeLayout.graph(for: tree))
+                    let found = try dependencies(tree)
+                    try Task.checkCancellation()
+                    return (tree, TreeLayout.graph(for: tree, dependencies: found))
                 }
             }
             self.scanTask = scanTask
