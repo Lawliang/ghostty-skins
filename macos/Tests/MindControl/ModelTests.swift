@@ -70,5 +70,19 @@ struct ModelTests {
         #expect(model.graphVersion == 2)           // cache hit still republishes so the renderer re-frames
         if case .ready = model.state {} else { Issue.record("expected ready, got \(model.state)") }
     }
+
+    @Test func panelTexts() {
+        let full = tree(["a.swift", "b.swift"])
+        #expect(MindControl.Panel.statusText(for: .ready(full)) == "proj · 2 files")
+        let capped = tree(Array(repeating: "x", count: 3), total: 12_345)
+        #expect(MindControl.Panel.statusText(for: .ready(capped)) == "proj · showing 3 of 12,345 files")
+        #expect(MindControl.Panel.statusText(for: .scanning) == nil)
+
+        #expect(MindControl.Panel.centerMessage(for: .ready(full)) == nil)
+        #expect(MindControl.Panel.centerMessage(for: .scanning) == "Mapping project…")
+        #expect(MindControl.Panel.centerMessage(for: .noProject) == "This terminal hasn't reported a working directory.")
+        #expect(MindControl.Panel.centerMessage(for: .empty("proj")) == "proj has no files to map.")
+        #expect(MindControl.Panel.centerMessage(for: .failed("Can't read /x.")) == "Can't read /x.")
+    }
 }
 #endif

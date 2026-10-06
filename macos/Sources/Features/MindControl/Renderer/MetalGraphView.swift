@@ -5,6 +5,24 @@ extension MindControl {
     /// MTKView that turns mouse and trackpad input into camera moves.
     final class GraphMTKView: MTKView {
         var renderer: Renderer?
+        var onEscape: (() -> Void)?
+
+        override func keyDown(with event: NSEvent) {
+            if event.keyCode == 53 {   // Escape
+                onEscape?()
+            } else {
+                super.keyDown(with: event)
+            }
+        }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            // Take keyboard focus so Esc reaches us while the panel is open.
+            DispatchQueue.main.async { [weak self] in
+                guard let self, let window = self.window else { return }
+                window.makeFirstResponder(self)
+            }
+        }
 
         override var acceptsFirstResponder: Bool { true }
 
@@ -32,10 +50,12 @@ extension MindControl {
 
     struct MetalGraphView: NSViewRepresentable {
         let renderer: Renderer
+        var onEscape: (() -> Void)?
 
         func makeNSView(context: Context) -> GraphMTKView {
             let view = GraphMTKView(frame: .zero, device: renderer.device)
             view.renderer = renderer
+            view.onEscape = onEscape
             view.delegate = renderer
             view.colorPixelFormat = Renderer.outputFormat
             view.colorspace = CGColorSpace(name: CGColorSpace.sRGB)
@@ -45,6 +65,8 @@ extension MindControl {
             return view
         }
 
-        func updateNSView(_ view: GraphMTKView, context: Context) {}
+        func updateNSView(_ view: GraphMTKView, context: Context) {
+            view.onEscape = onEscape
+        }
     }
 }

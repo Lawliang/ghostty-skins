@@ -117,6 +117,18 @@ struct TerminalView<ViewModel: TerminalViewModel>: View {
                     }
                 }
 
+                // MindControl: a tab on the right edge that expands into a project map.
+                MindControl.Drawer(
+                    pwd: {
+                        guard let pwd = lastFocusedSurface?.value?.pwd, !pwd.isEmpty else { return nil }
+                        return URL(fileURLWithPath: pwd)
+                    },
+                    onClose: {
+                        if let surface = lastFocusedSurface?.value {
+                            Ghostty.moveFocus(to: surface)
+                        }
+                    })
+
                 // Show update information above all else.
                 if viewModel.updateOverlayIsVisible {
                     UpdateOverlay()
