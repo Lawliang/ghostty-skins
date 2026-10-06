@@ -61,7 +61,7 @@ macos/Tests/MindControl/
 MINDCONTROL.md                                                create (Task 6)
 ```
 
-Port sources live in the standalone repo's working tree: `~/projectrepos/MindControl` (branch `feat/initial-scaffold`, including its uncommitted bloom files) and its plan `docs/superpowers/plans/2026-10-05`… — exact paths in Task 1. Read them; do not modify that repo.
+Port sources: the standalone repo's working tree `~/projectrepos/MindControl` (branch `feat/initial-scaffold`, including its uncommitted bloom files) and, for `Signals.metal`, its plan `docs/superpowers/plans/2026-10-06-metal-synaptic-renderer.md` (Task 6 Step 3). Read them; do not modify that repo.
 
 ---
 
@@ -1248,7 +1248,7 @@ extension MindControl {
 
         var body: some View {
             HStack(spacing: 0) {
-                Tab(isOpen: isOpen, action: toggle)
+                DrawerTab(isOpen: isOpen, action: toggle)
 
                 if isOpen {
                     Panel(model: model, onClose: toggle)
@@ -1269,7 +1269,7 @@ extension MindControl {
         }
     }
 
-    private struct Tab: View {
+    private struct DrawerTab: View {
         static let width: CGFloat = 22
         static let height: CGFloat = 64
         private static let glow = Color(red: 0.45, green: 0.80, blue: 1.0)
