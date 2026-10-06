@@ -86,5 +86,15 @@ struct TreeLayoutTests {
         #expect(graph?.nodes.count == expectedNodes)
         #expect(elapsed < .milliseconds(200))
     }
+
+    @Test func crowdedFilesAreDimmed() {
+        let crowded = (0..<1_000).map { "big/f\($0).txt" }
+        let graph = TreeLayout.graph(for: tree(crowded + ["small/a.swift", "small/b.swift"]))
+        let weight = { (id: String) in graph.nodes.first { $0.id == id }?.weight }
+        #expect(weight("small/a.swift") == 1)
+        #expect(weight("big") == 1)                       // folders stay bright landmarks
+        #expect((weight("big/f0.txt") ?? 1) < 0.3)
+        #expect((weight("big/f0.txt") ?? 0) >= TreeLayout.minimumFileWeight)
+    }
 }
 #endif

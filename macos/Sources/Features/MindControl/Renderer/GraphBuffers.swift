@@ -52,7 +52,8 @@ extension MindControl {
                     position: node.position,
                     radius: NodeStyle.radius(for: node.kind),
                     color: NodeStyle.color(for: node.kind),
-                    phase: StableHash.unit(node.id) * 2 * .pi
+                    phase: StableHash.unit(node.id) * 2 * .pi,
+                    intensity: node.weight
                 ))
             }
 

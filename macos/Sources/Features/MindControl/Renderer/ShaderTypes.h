@@ -14,6 +14,7 @@ typedef struct {
     float radius;
     vector_float3 color;   // linear HDR
     float phase;           // radians, desynchronises the pulse
+    float intensity;       // brightness multiplier, 0...1
 } MCNodeInstance;
 
 typedef struct {
@@ -31,6 +32,7 @@ typedef struct {
     float fogDensity;
     float fogStart;              // view-space depth where fog begins
     float projScaleY;            // projection[1][1], converts world radius to pixels
+    float glowScale;             // 1 for small graphs, lower for dense ones so glows don't saturate
 } MCFrameUniforms;
 
 typedef struct {

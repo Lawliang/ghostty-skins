@@ -6,7 +6,7 @@ extension MindControl {
     final class BloomPass {
         nonisolated static let levelCount = 5
 
-        var threshold: Float = 0.8
+        var threshold: Float = 1.0
         var knee: Float = 0.5
 
         private let device: MTLDevice

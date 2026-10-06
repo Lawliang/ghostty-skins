@@ -34,6 +34,7 @@ extension MindControl {
         private var edgeCount = 0
         private var dustCount = 0
         private var graphRadius: Float = 1
+        private var glowScale: Float = 1
 
         private var hdrTexture: MTLTexture?
         private let startTime = CACurrentMediaTime()
@@ -64,6 +65,7 @@ extension MindControl {
         func setGraph(_ graph: Graph) {
             let buffers = GraphBuffers(graph: graph)
             nodeCount = buffers.nodes.count
+            glowScale = Self.glowScale(nodeCount: nodeCount)
             edgeCount = buffers.edges.count
             nodeBuffer = makeBuffer(buffers.nodes)
             edgeBuffer = makeBuffer(buffers.edges)
@@ -113,7 +115,8 @@ extension MindControl {
                 pixelScale: pixelScale,
                 fogDensity: 1.1 / (graphRadius * 2),
                 fogStart: max(0, camera.distance - graphRadius * 0.4),
-                projScaleY: projection.columns.1.y
+                projScaleY: projection.columns.1.y,
+            glowScale: glowScale
             )
 
             encodeScene(commandBuffer, target: hdr, frame: &frame)
@@ -167,7 +170,7 @@ extension MindControl {
             var uniforms = MCCompositeUniforms(
                 viewportSize: SIMD2(Float(width), Float(height)),
                 time: time,
-                bloomStrength: bloomStrength,
+                bloomStrength: bloomStrength * glowScale,
                 exposure: exposure
             )
             encoder.setRenderPipelineState(pipelines.composite)
@@ -176,6 +179,12 @@ extension MindControl {
             encoder.setFragmentBytes(&uniforms, length: MemoryLayout<MCCompositeUniforms>.stride, index: 0)
             encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
             encoder.endEncoding()
+        }
+
+        /// Dims glows as graphs get denser: 1 up to 400 nodes, then ∝ 1/√n, never below 0.2.
+        nonisolated static func glowScale(nodeCount: Int) -> Float {
+            guard nodeCount > 400 else { return 1 }
+            return max(0.2, (400 / Float(nodeCount)).squareRoot())
         }
 
         // MARK: Resources

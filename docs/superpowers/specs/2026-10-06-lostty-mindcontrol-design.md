@@ -1,7 +1,7 @@
 # Lostty MindControl Panel — Design
 
 Date: 2026-10-06
-Status: Draft — pending spec review
+Status: Implemented
 Branch: `mindcontrol` (worktree `.claude/worktrees/mindcontrol`, based on `skins` @ 7121f2c)
 
 ## 1. Goal
@@ -45,6 +45,7 @@ selection, file watching / live updates, a keybinding or menu item, Linux/GTK.
 
 ```
 macos/Sources/Features/MindControl/
+  MindControl.swift            Namespace: enum MindControl {}
   MindControlDrawer.swift      Tab + sliding drawer; open/closed state; focus hand-off
   MindControlPanel.swift       Panel content: renderer view + status label + empty/error states
   MindControlModel.swift       @MainActor ObservableObject: current root, scan state, cache
@@ -67,7 +68,8 @@ macos/Sources/Features/MindControl/
       Nodes.metal, Bloom.metal, Composite.metal   (ported)
 macos/Tests/MindControl/
   GraphBuffersTests, OrbitCameraTests, StressGraphTests, RendererTests,
-  BloomPassTests (ported); ProjectScannerTests, TreeLayoutTests (new)
+  BloomPassTests (ported); ProjectScannerTests, TreeLayoutTests, ModelTests,
+  DensityTests (new)
 ```
 
 `macos/Sources` and `macos/Tests` are synchronized folders in
@@ -104,8 +106,8 @@ besides the bridging-header import.
 | Opening / closing | Drawer slides in from the right edge (spring, ~0.35 s). The tab rides on the drawer's leading edge. | Tab clickable throughout. |
 | Open | Panel fills the terminal area (the full `ZStack`), opaque. Tab sits on its leading edge with the glyph flipped to "close". | Panel takes mouse/scroll/pinch; the Metal view becomes first responder so Esc closes. |
 
-On close: `MTKView.isPaused = true`, and focus returns to the last focused
-terminal surface. On open: unpause, reset the frame clock (no camera jump).
+On close the panel and its Metal view are removed (no GPU work); the per-window
+model keeps the scan cache. Focus returns to the last focused terminal surface.
 
 The open/closed state is per window and not persisted.
 
@@ -153,8 +155,9 @@ No pwd → state `.noProject`. Git or file system failure → state
 
 `@MainActor` `ObservableObject`, one per window. Holds `state`
 (`.idle | .scanning | .ready(Graph, FileTree) | .noProject | .empty | .failed(String)`)
-and a cache keyed by root path. Rescans when the drawer opens, or when the
-focused surface's resolved root changes while open. Cached roots render
+and a cache keyed by root path. Scans when the drawer opens (focus cannot
+move to another split while the panel covers the terminal); pwd is read from the
+last focused surface at open time. Cached roots render
 immediately; the cache is cleared when the window closes.
 
 ## 7. Rendering
@@ -169,6 +172,22 @@ Ported unchanged from MindControl except for naming (§4.1) and:
   `<root name> · 1,284 files`, or `… · showing 10,000 of 23,412 files` when
   truncated. Empty/error/no-project states show a centred one-line message over
   the background instead of a graph.
+
+### 7.1 Density (added during tuning)
+
+Real repos are lopsided (Lostty: 4,016 of 5,619 files under `test/`), and additive
+glow saturates where hundreds of nodes overlap in projection. Two controls:
+
+- **Per-file weight** (`GraphNode.weight` → `MCNodeInstance.intensity`): files in
+  a folder with n files get `min(1, max(0.12, (30/n)^0.75))`; folders stay at 1 as
+  landmarks. Nodes, edges and signals scale by it.
+- **Global glow scale** (`MCFrameUniforms.glowScale`): 1 up to 400 nodes, then
+  `√(400/n)`, floor 0.2. Halos, rings and edges scale fully; cores and signals
+  partially; bloom strength scales with it.
+- Layout: files sit in a thick shell (`0.6–1.0 × r`), `r = 1 + 0.6·√size`;
+  subfolders at `2.0 × r`. Bloom threshold 1.0.
+
+`DensityTests` pins this: a Lostty-shaped tree must render with < 3% blown-out pixels.
 
 ## 8. Error handling
 

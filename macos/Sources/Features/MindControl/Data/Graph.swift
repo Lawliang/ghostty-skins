@@ -14,6 +14,8 @@ extension MindControl {
         let label: String
         let kind: NodeKind
         var position: SIMD3<Float>
+        /// Brightness multiplier (0...1); crowded files are dimmed so dense folders stay readable.
+        var weight: Float = 1
     }
 
     struct GraphEdge: Sendable {

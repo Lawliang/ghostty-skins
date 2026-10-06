@@ -57,12 +57,13 @@ vertex SignalOut mcSignalVertex(uint vid [[vertex_id]],
     float cycle = fract(u.time / period + e.signalSeed);
     out.head = cycle * 1.8 - 0.2;
 
-    out.color = mix(atB ? nb.color : na.color, float3(0.75, 0.92, 1.0), 0.55);
+    out.color = mix(atB ? nb.color : na.color, float3(0.75, 0.92, 1.0), 0.55) * min(na.intensity, nb.intensity);
     out.fog = fogFactor(u, atB ? nb.position : na.position);
     return out;
 }
 
-fragment float4 mcSignalFragment(SignalOut in [[stage_in]]) {
+fragment float4 mcSignalFragment(SignalOut in [[stage_in]],
+                                 constant MCFrameUniforms& u [[buffer(MC_BUFFER_FRAME)]]) {
     float behind = (in.head - in.along) * in.lengthPoints;   // points behind the head; negative is ahead
     float trail = behind >= 0.0 ? exp(-behind / kTailPoints * 3.0) : exp(behind * 0.9);
     float across = in.across;
@@ -71,6 +72,6 @@ fragment float4 mcSignalFragment(SignalOut in [[stage_in]]) {
 
     // Keep the signal on the edge itself; it vanishes into the destination node.
     float onEdge = smoothstep(0.0, 0.03, in.along) * (1.0 - smoothstep(0.97, 1.0, in.along));
-    float intensity = (trail * profile * 1.4 + spark * 3.5) * onEdge;
+    float intensity = (trail * profile * 1.4 + spark * 3.5) * onEdge * mix(0.5, 1.0, u.glowScale);
     return float4(in.color * intensity * in.fog, 0.0);
 }

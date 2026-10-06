@@ -7,6 +7,14 @@ extension MindControl {
     enum TreeLayout {
         static let rootID = "."
         static let documentExtensions: Set<String> = ["md", "markdown", "txt", "rst", "adoc", "org", "pdf"]
+        /// Files in folders with more siblings than this start to dim.
+        static let crowdThreshold: Float = 30
+        static let minimumFileWeight: Float = 0.12
+
+        /// Brightness for a file with `siblings` files beside it (itself included).
+        static func fileWeight(siblings: Int) -> Float {
+            min(1, max(minimumFileWeight, pow(crowdThreshold / Float(max(siblings, 1)), 0.75)))
+        }
 
         private final class Folder {
             let id: String
@@ -60,7 +68,8 @@ extension MindControl {
             let topLevel = entries(of: root).sorted { $0.weight > $1.weight }
             for (i, entry) in topLevel.enumerated() {
                 let direction = fibonacciSphere(index: i, count: topLevel.count)
-                place(entry, at: direction * rootRadius, outward: direction, parent: rootID, nodes: &nodes, edges: &edges)
+                place(entry, at: direction * rootRadius, outward: direction, parent: rootID,
+                      fileWeight: fileWeight(siblings: root.files.count), nodes: &nodes, edges: &edges)
             }
             return Graph(nodes: nodes, edges: edges)
         }
@@ -79,10 +88,11 @@ extension MindControl {
         }
 
         private static func place(_ entry: Entry, at position: SIMD3<Float>, outward: SIMD3<Float>, parent: String,
-                                  nodes: inout [GraphNode], edges: inout [GraphEdge]) {
+                                  fileWeight: Float, nodes: inout [GraphNode], edges: inout [GraphEdge]) {
             switch entry {
             case .file(let path):
-                nodes.append(GraphNode(id: path, label: (path as NSString).lastPathComponent, kind: kind(for: path), position: position))
+                nodes.append(GraphNode(id: path, label: (path as NSString).lastPathComponent, kind: kind(for: path),
+                                       position: position, weight: fileWeight))
                 edges.append(GraphEdge(from: parent, to: path))
 
             case .folder(let folder):
@@ -90,12 +100,19 @@ extension MindControl {
                 edges.append(GraphEdge(from: parent, to: folder.id))
 
                 let children = entries(of: folder)
-                let radius = 1.0 + 0.45 * Float(folder.size).squareRoot()
+                let childFileWeight = Self.fileWeight(siblings: folder.files.count)
+                let radius = 1.0 + 0.6 * Float(folder.size).squareRoot()
                 for (i, child) in children.enumerated() {
                     let direction = hemisphere(index: i, count: children.count, facing: outward)
                     let distance: Float
-                    if case .folder = child { distance = radius * 1.6 } else { distance = radius }
-                    place(child, at: position + direction * distance, outward: direction, parent: folder.id, nodes: &nodes, edges: &edges)
+                    if case .folder = child {
+                        distance = radius * 2.0
+                    } else {
+                        // Spread files through a thick shell so big folders read as volumes, not a crust.
+                        distance = radius * (0.6 + 0.4 * fract(Float(i) * 0.618034))
+                    }
+                    place(child, at: position + direction * distance, outward: direction, parent: folder.id,
+                          fileWeight: childFileWeight, nodes: &nodes, edges: &edges)
                 }
             }
         }
@@ -103,6 +120,8 @@ extension MindControl {
         private static func kind(for path: String) -> NodeKind {
             documentExtensions.contains((path as NSString).pathExtension.lowercased()) ? .document : .source
         }
+
+        private static func fract(_ x: Float) -> Float { x - x.rounded(.down) }
 
         private static let goldenAngle = Float.pi * (3 - Float(5).squareRoot())
 

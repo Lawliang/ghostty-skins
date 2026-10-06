@@ -85,5 +85,13 @@ struct GraphBuffersTests {
         #expect(a.allSatisfy { $0 >= 0 && $0 < 2 * .pi })
         #expect(Set(a).count > a.count / 2)
     }
+
+    @Test func intensityComesFromWeight() {
+        var dim = node("dim")
+        dim.weight = 0.25
+        let n = GraphBuffers(graph: Graph(nodes: [node("bright"), dim], edges: [])).nodes
+        #expect(n[0].intensity == 1)
+        #expect(n[1].intensity == 0.25)
+    }
 }
 #endif

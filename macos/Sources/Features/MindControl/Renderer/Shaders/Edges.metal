@@ -41,7 +41,7 @@ vertex EdgeOut mcEdgeVertex(uint vid [[vertex_id]],
     float4 clip = atB ? cb : ca;
     float2 px = (atB ? pb : pa) + normal * side * halfQuad;
     out.position = fromPixels(px, clip, u.viewportSize);
-    out.color = atB ? nb.color : na.color;
+    out.color = (atB ? nb.color : na.color) * min(na.intensity, nb.intensity);
     out.across = side * halfQuad;
     out.fog = fogFactor(u, atB ? nb.position : na.position);
     return out;
@@ -52,6 +52,6 @@ fragment float4 mcEdgeFragment(EdgeOut in [[stage_in]],
     float d = abs(in.across) / u.pixelScale;  // points from centreline
     float core = 1.0 - smoothstep(kEdgeHalfWidth - 0.5, kEdgeHalfWidth + 0.5, d);
     float glow = exp(-d * d * 0.7);
-    float intensity = core * 0.30 + glow * 0.10;
+    float intensity = (core * 0.30 + glow * 0.10) * u.glowScale;
     return float4(in.color * intensity * in.fog, 0.0);
 }
