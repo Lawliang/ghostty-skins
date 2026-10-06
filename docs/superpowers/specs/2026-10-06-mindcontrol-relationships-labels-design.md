@@ -195,7 +195,7 @@ source, document). Always visible while the panel is open.
 
 - Unreadable or non-UTF-8 files: skipped by the dependency scan.
 - Parser surprises (unbalanced quotes, huge single lines): parsers are
-  line/regex based with per-file time-insensitive limits (512 KB) and never throw.
+  line/regex based, bounded by the 512 KB file-size limit, and never throw.
 - A project with zero uses-edges renders exactly as before plus the legend.
 - Cancellation mid-pipeline publishes nothing (existing Model behaviour).
 
