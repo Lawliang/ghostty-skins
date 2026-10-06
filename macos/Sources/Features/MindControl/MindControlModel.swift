@@ -61,7 +61,7 @@ extension MindControl {
                     try Task.checkCancellation()
                     let found = try dependencies(tree)
                     try Task.checkCancellation()
-                    return (tree, TreeLayout.graph(for: tree, dependencies: found))
+                    return (tree, ConeTreeLayout.graph(for: tree, dependencies: found))
                 }
             }
             self.scanTask = scanTask

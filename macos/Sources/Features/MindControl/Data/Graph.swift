@@ -16,6 +16,8 @@ extension MindControl {
         var position: SIMD3<Float>
         /// Brightness multiplier (0...1); crowded files are dimmed so dense folders stay readable.
         var weight: Float = 1
+        /// For folders and the root: files anywhere beneath them. 0 for files.
+        var descendantFiles: Int = 0
     }
 
     /// What a line between two nodes means.

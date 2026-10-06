@@ -44,7 +44,7 @@ struct DensityTests {
     }
 
     @Test func lopsidedProjectDoesNotBlowOut() throws {
-        let fraction = try whiteFraction(MindControl.TreeLayout.graph(for: Self.lopsidedTree))
+        let fraction = try whiteFraction(MindControl.ConeTreeLayout.graph(for: Self.lopsidedTree))
         #expect(fraction < 0.03, "\(Int(fraction * 100))% of pixels are blown out")
     }
 
