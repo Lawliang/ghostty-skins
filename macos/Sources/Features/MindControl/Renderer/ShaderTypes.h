@@ -11,6 +11,7 @@
 
 #define MC_EDGE_CONTAINS 0
 #define MC_EDGE_USES 1
+#define MC_USES_SEGMENTS 12   // uses-edges are curves tessellated into this many segments
 
 typedef struct {
     vector_float3 position;
@@ -37,6 +38,7 @@ typedef struct {
     float fogStart;              // view-space depth where fog begins
     float projScaleY;            // projection[1][1], converts world radius to pixels
     float glowScale;             // 1 for small graphs, lower for dense ones so glows don't saturate
+    float usesScale;             // 1 for few uses-edges, lower when there are many so curves don't saturate
 } MCFrameUniforms;
 
 typedef struct {

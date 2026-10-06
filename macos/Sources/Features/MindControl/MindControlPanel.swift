@@ -34,6 +34,11 @@ extension MindControl {
                         .foregroundColor(.secondary)
                         .padding(14)
                 }
+
+                if renderer != nil {
+                    Legend()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                }
             }
             .onAppear(perform: startRenderer)
             .onChange(of: model.graphVersion) { _ in

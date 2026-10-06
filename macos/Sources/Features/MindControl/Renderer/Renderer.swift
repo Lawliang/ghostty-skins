@@ -28,13 +28,17 @@ extension MindControl {
         private let bloom: BloomPass
 
         private var nodeBuffer: MTLBuffer?
-        private var edgeBuffer: MTLBuffer?
+        private var containsBuffer: MTLBuffer?
+        private var usesBuffer: MTLBuffer?
         private var dustBuffer: MTLBuffer?
         private var nodeCount = 0
-        private var edgeCount = 0
+        private var containsCount = 0
+        private var usesCount = 0
+        private static let usesVertexCount = (Int(MC_USES_SEGMENTS) + 1) * 2
         private var dustCount = 0
         private var graphRadius: Float = 1
         private var glowScale: Float = 1
+        private var usesScale: Float = 1
 
         private var hdrTexture: MTLTexture?
         private let startTime = CACurrentMediaTime()
@@ -66,9 +70,12 @@ extension MindControl {
             let buffers = GraphBuffers(graph: graph)
             nodeCount = buffers.nodes.count
             glowScale = Self.glowScale(nodeCount: nodeCount)
-            edgeCount = buffers.edges.count
             nodeBuffer = makeBuffer(buffers.nodes)
-            edgeBuffer = makeBuffer(buffers.edges)
+            containsCount = buffers.containsEdges.count
+            usesCount = buffers.usesEdges.count
+            containsBuffer = makeBuffer(buffers.containsEdges)
+            usesBuffer = makeBuffer(buffers.usesEdges)
+            usesScale = Self.usesScale(edgeCount: usesCount)
             graphRadius = max(buffers.boundingRadius, 1)
 
             let dust = Self.dustField(center: buffers.center, radius: graphRadius)
@@ -116,7 +123,8 @@ extension MindControl {
                 fogDensity: 1.1 / (graphRadius * 2),
                 fogStart: max(0, camera.distance - graphRadius * 0.4),
                 projScaleY: projection.columns.1.y,
-            glowScale: glowScale
+            glowScale: glowScale,
+            usesScale: usesScale
             )
 
             encodeScene(commandBuffer, target: hdr, frame: &frame)
@@ -143,14 +151,21 @@ extension MindControl {
                 encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4, instanceCount: dustCount)
             }
 
-            if let nodeBuffer, let edgeBuffer {
-                encoder.setVertexBuffer(edgeBuffer, offset: 0, index: Int(MC_BUFFER_INSTANCES))
+            if let nodeBuffer {
                 encoder.setVertexBuffer(nodeBuffer, offset: 0, index: Int(MC_BUFFER_NODES))
-                encoder.setRenderPipelineState(pipelines.edges)
-                encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4, instanceCount: edgeCount)
-                if signalsEnabled {
-                    encoder.setRenderPipelineState(pipelines.signals)
-                    encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4, instanceCount: edgeCount)
+                if let containsBuffer {
+                    encoder.setRenderPipelineState(pipelines.containsEdges)
+                    encoder.setVertexBuffer(containsBuffer, offset: 0, index: Int(MC_BUFFER_INSTANCES))
+                    encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4, instanceCount: containsCount)
+                }
+                if let usesBuffer {
+                    encoder.setRenderPipelineState(pipelines.usesEdges)
+                    encoder.setVertexBuffer(usesBuffer, offset: 0, index: Int(MC_BUFFER_INSTANCES))
+                    encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: Self.usesVertexCount, instanceCount: usesCount)
+                    if signalsEnabled {
+                        encoder.setRenderPipelineState(pipelines.signals)
+                        encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: Self.usesVertexCount, instanceCount: usesCount)
+                    }
                 }
             }
 
@@ -185,6 +200,12 @@ extension MindControl {
         nonisolated static func glowScale(nodeCount: Int) -> Float {
             guard nodeCount > 400 else { return 1 }
             return max(0.2, (400 / Float(nodeCount)).squareRoot())
+        }
+
+        /// Dims uses-edges when there are many: 1 up to 300, then ∝ n^-0.75, never below 0.08.
+        nonisolated static func usesScale(edgeCount: Int) -> Float {
+            guard edgeCount > 300 else { return 1 }
+            return max(0.08, pow(300 / Float(edgeCount), 0.75))
         }
 
         // MARK: Resources

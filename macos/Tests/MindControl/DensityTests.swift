@@ -56,5 +56,26 @@ struct DensityTests {
         #expect(scale(1_000_000) == 0.2)
         #expect(scale(800) > scale(3_000))
     }
+
+    /// Thousands of dependency curves add only a little blown-out area on top of the graph itself.
+    @Test func denseDependenciesDoNotBlowOut() throws {
+        let base = MindControl.Graph.stress(nodeCount: 1_000)
+        var dense = base
+        var rng = MindControl.SplitMix64(seed: 9)
+        for _ in 0..<6_000 {
+            let a = Int.random(in: 0..<900, using: &rng), b = Int.random(in: 0..<900, using: &rng)
+            if a != b { dense.edges.append(MindControl.GraphEdge(from: "l\(a)", to: "l\(b)", kind: .uses)) }
+        }
+        let added = try whiteFraction(dense) - whiteFraction(base)
+        #expect(added < 0.02, "dependencies blew out \(Int(added * 100)) more percent of pixels")
+    }
+
+    @Test func usesScaleFallsWithEdgeCount() {
+        let scale = MindControl.Renderer.usesScale(edgeCount:)
+        #expect(scale(0) == 1)
+        #expect(scale(300) == 1)
+        #expect(abs(scale(1_200) - pow(0.25, 0.75)) < 1e-6)
+        #expect(scale(10_000_000) == 0.08)
+    }
 }
 #endif

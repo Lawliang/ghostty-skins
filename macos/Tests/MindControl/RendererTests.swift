@@ -94,5 +94,43 @@ struct RendererTests {
         let on = try renderAverage(using: renderer)
         #expect(on > off)
     }
+
+    /// Sum of each colour channel over one offscreen frame, as (red, green, blue).
+    private func renderChannelSums(using renderer: Renderer, width: Int = 160, height: Int = 100) throws -> SIMD3<Double> {
+        let device = renderer.device
+        let desc = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: Renderer.outputFormat, width: width, height: height, mipmapped: false)
+        desc.usage = [.renderTarget, .shaderRead]
+        desc.storageMode = .managed
+        let texture = try #require(device.makeTexture(descriptor: desc))
+        let pass = MTLRenderPassDescriptor()
+        pass.colorAttachments[0].texture = texture
+        pass.colorAttachments[0].storeAction = .store
+        let cmd = try #require(device.makeCommandQueue()?.makeCommandBuffer())
+        renderer.encodeFrame(into: cmd, output: pass, width: width, height: height, pixelScale: 1, time: 1.5)
+        let blit = try #require(cmd.makeBlitCommandEncoder())
+        blit.synchronize(resource: texture)
+        blit.endEncoding()
+        cmd.commit()
+        cmd.waitUntilCompleted()
+        var bytes = [UInt8](repeating: 0, count: width * height * 4)
+        texture.getBytes(&bytes, bytesPerRow: width * 4, from: MTLRegionMake2D(0, 0, width, height), mipmapLevel: 0)
+        var sums = SIMD3<Double>(repeating: 0)
+        for p in stride(from: 0, to: bytes.count, by: 4) {       // BGRA
+            sums += SIMD3(Double(bytes[p + 2]), Double(bytes[p + 1]), Double(bytes[p]))
+        }
+        return sums
+    }
+
+    @Test func usesEdgesAreWarmerThanContainsEdges() throws {
+        let nodes = [GraphNode(id: "a", label: "a", kind: .source, position: SIMD3(-4, 0, 0)),
+                     GraphNode(id: "b", label: "b", kind: .source, position: SIMD3(4, 0, 0))]
+        let renderer = try Renderer()
+        renderer.signalsEnabled = false
+        renderer.setGraph(Graph(nodes: nodes, edges: [GraphEdge(from: "a", to: "b")]))
+        let contains = try renderChannelSums(using: renderer)
+        renderer.setGraph(Graph(nodes: nodes, edges: [GraphEdge(from: "a", to: "b", kind: .uses)]))
+        let uses = try renderChannelSums(using: renderer)
+        #expect(uses.x / uses.z > contains.x / contains.z)   // red relative to blue
+    }
 }
 #endif

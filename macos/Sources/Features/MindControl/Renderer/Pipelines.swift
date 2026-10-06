@@ -4,7 +4,8 @@ extension MindControl {
     /// Every render pipeline the renderer uses, built once at startup.
     struct Pipelines {
         let dust: MTLRenderPipelineState
-        let edges: MTLRenderPipelineState
+        let containsEdges: MTLRenderPipelineState
+        let usesEdges: MTLRenderPipelineState
         let signals: MTLRenderPipelineState
         let nodes: MTLRenderPipelineState
         let composite: MTLRenderPipelineState
@@ -41,7 +42,8 @@ extension MindControl {
 
             let hdr = Renderer.hdrFormat
             dust = try make("mcDustVertex", "mcDustFragment", format: hdr, additive: true)
-            edges = try make("mcEdgeVertex", "mcEdgeFragment", format: hdr, additive: true)
+            containsEdges = try make("mcContainsEdgeVertex", "mcContainsEdgeFragment", format: hdr, additive: true)
+            usesEdges = try make("mcUsesEdgeVertex", "mcUsesEdgeFragment", format: hdr, additive: true)
             signals = try make("mcSignalVertex", "mcSignalFragment", format: hdr, additive: true)
             nodes = try make("mcNodeVertex", "mcNodeFragment", format: hdr, additive: true)
             composite = try make("mcFullscreenVertex", "mcCompositeFragment", format: Renderer.outputFormat, additive: false)

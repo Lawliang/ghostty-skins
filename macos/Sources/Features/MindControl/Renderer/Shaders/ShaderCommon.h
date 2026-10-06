@@ -48,4 +48,27 @@ inline float3 linearToSRGB(float3 c) {
     return select(1.055 * pow(c, 1.0 / 2.4) - 0.055, c * 12.92, c <= 0.0031308);
 }
 
+#define MC_USES_BOW 0.18   // control-point offset as a fraction of the screen-space chord
+
+struct CurveSample {
+    float2 point;
+    float2 normal;
+};
+
+/// Point and unit normal at t on the quadratic Bézier that bows a uses-edge from pa to pb (pixels).
+inline CurveSample usesCurve(float2 pa, float2 pb, float t) {
+    float2 delta = pb - pa;
+    float len = length(delta);
+    float2 dir = len > 1e-3 ? delta / len : float2(1.0, 0.0);
+    float2 control = (pa + pb) * 0.5 + float2(-dir.y, dir.x) * (MC_USES_BOW * len);
+    float s = 1.0 - t;
+    CurveSample sample;
+    sample.point = s * s * pa + 2.0 * s * t * control + t * t * pb;
+    float2 tangent = 2.0 * s * (control - pa) + 2.0 * t * (pb - control);
+    float tangentLength = length(tangent);
+    float2 along = tangentLength > 1e-3 ? tangent / tangentLength : dir;
+    sample.normal = float2(-along.y, along.x);
+    return sample;
+}
+
 #endif // MC_SHADER_COMMON_H
