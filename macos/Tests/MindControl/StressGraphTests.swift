@@ -36,5 +36,13 @@ struct StressGraphTests {
         let g = Graph.stress(nodeCount: 3_000)
         #expect(Set(g.nodes.map(\.id)).count == g.nodes.count)
     }
+
+    @Test func crossLinksAreUsesEdges() {
+        let g = Graph.stress(nodeCount: 2_000)
+        let uses = g.edges.filter { $0.kind == .uses }
+        #expect(!uses.isEmpty)
+        #expect(uses.allSatisfy { $0.from.hasPrefix("l") && $0.to.hasPrefix("l") })
+        #expect(g.edges.filter { $0.kind == .contains }.count == g.nodes.count - 1)
+    }
 }
 #endif

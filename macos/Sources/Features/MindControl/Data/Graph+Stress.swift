@@ -55,7 +55,7 @@ extension MindControl.Graph {
                 let a = Int.random(in: 0..<leafCount, using: &rng)
                 var b = Int.random(in: 0..<leafCount, using: &rng)
                 if a == b { b = (b + 1) % leafCount }
-                edges.append(MindControl.GraphEdge(from: "l\(a)", to: "l\(b)"))
+                edges.append(MindControl.GraphEdge(from: "l\(a)", to: "l\(b)", kind: .uses))
             }
         }
 

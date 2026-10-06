@@ -38,6 +38,10 @@ extension MindControl {
     struct GraphBuffers {
         let nodes: [MCNodeInstance]
         let edges: [MCEdgeInstance]
+        /// Folder→child edges, drawn as straight hairlines.
+        let containsEdges: [MCEdgeInstance]
+        /// File→file dependencies, drawn as curves that carry signals.
+        let usesEdges: [MCEdgeInstance]
         let center: SIMD3<Float>
         let boundingRadius: Float
 
@@ -57,10 +61,14 @@ extension MindControl {
                 ))
             }
 
-            self.edges = graph.edges.compactMap { edge in
+            let edges: [MCEdgeInstance] = graph.edges.compactMap { edge in
                 guard let a = index[edge.from], let b = index[edge.to], a != b else { return nil }
-                return MCEdgeInstance(a: a, b: b, signalSeed: StableHash.unit(edge.from + "\u{1F}" + edge.to))
+                let kind = edge.kind == .uses ? UInt32(MC_EDGE_USES) : UInt32(MC_EDGE_CONTAINS)
+                return MCEdgeInstance(a: a, b: b, signalSeed: StableHash.unit(edge.from + "\u{1F}" + edge.to), kind: kind)
             }
+            self.edges = edges
+            self.containsEdges = edges.filter { $0.kind == UInt32(MC_EDGE_CONTAINS) }
+            self.usesEdges = edges.filter { $0.kind == UInt32(MC_EDGE_USES) }
             self.nodes = nodes
 
             guard let first = nodes.first else {

@@ -93,5 +93,21 @@ struct GraphBuffersTests {
         #expect(n[0].intensity == 1)
         #expect(n[1].intensity == 0.25)
     }
+
+    @Test func edgesSplitByKind() {
+        let graph = Graph(nodes: [node("a"), node("b"), node("c")],
+                          edges: [GraphEdge(from: "a", to: "b"), GraphEdge(from: "b", to: "c", kind: .uses)])
+        let buffers = GraphBuffers(graph: graph)
+        #expect(buffers.edges.count == 2)
+        #expect(buffers.containsEdges.count == 1)
+        #expect(buffers.usesEdges.count == 1)
+        #expect(buffers.usesEdges[0].a == 1 && buffers.usesEdges[0].b == 2)
+        #expect(buffers.usesEdges[0].kind == 1)
+        #expect(buffers.containsEdges[0].kind == 0)
+    }
+
+    @Test func sampleGraphHasUsesEdges() {
+        #expect(GraphBuffers(graph: .sample).usesEdges.count == 3)
+    }
 }
 #endif

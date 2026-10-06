@@ -9,6 +9,9 @@
 #define MC_BUFFER_NODES 1
 #define MC_BUFFER_FRAME 2
 
+#define MC_EDGE_CONTAINS 0
+#define MC_EDGE_USES 1
+
 typedef struct {
     vector_float3 position;
     float radius;
@@ -21,6 +24,7 @@ typedef struct {
     unsigned int a;
     unsigned int b;
     float signalSeed;      // [0, 1), decides whether and how this edge carries a signal
+    unsigned int kind;     // MC_EDGE_CONTAINS or MC_EDGE_USES
 } MCEdgeInstance;
 
 typedef struct {

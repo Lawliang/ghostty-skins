@@ -18,9 +18,18 @@ extension MindControl {
         var weight: Float = 1
     }
 
+    /// What a line between two nodes means.
+    enum EdgeKind: Sendable {
+        /// A folder contains a file or subfolder.
+        case contains
+        /// A file uses something defined in another file (import, type reference, link).
+        case uses
+    }
+
     struct GraphEdge: Sendable {
         let from: String
         let to: String
+        var kind: EdgeKind = .contains
     }
 
     struct Graph: Sendable {
@@ -54,9 +63,9 @@ extension MindControl.Graph {
         }
 
         // A few cross-links to suggest relationships between files.
-        edges.append(MindControl.GraphEdge(from: "Views/0", to: "Graph/1"))
-        edges.append(MindControl.GraphEdge(from: "Parsing/2", to: "Graph/0"))
-        edges.append(MindControl.GraphEdge(from: "Docs/1", to: "Views/2"))
+        edges.append(MindControl.GraphEdge(from: "Views/0", to: "Graph/1", kind: .uses))
+        edges.append(MindControl.GraphEdge(from: "Parsing/2", to: "Graph/0", kind: .uses))
+        edges.append(MindControl.GraphEdge(from: "Docs/1", to: "Views/2", kind: .uses))
 
         return MindControl.Graph(nodes: nodes, edges: edges)
     }()
