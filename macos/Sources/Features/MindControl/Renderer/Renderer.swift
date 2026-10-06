@@ -104,6 +104,10 @@ extension MindControl {
         private(set) var nodePositions: [SIMD3<Float>] = []
         private(set) var nodeRadii: [Float] = []
         private(set) var focusedIndex: Int?
+        /// The camera of the last encoded frame, for picking and labels.
+        private(set) var lastCamera: CameraSnapshot?
+        /// Called after each on-screen frame (not for offscreen renders).
+        var onFrame: (() -> Void)?
         private var adjacency: [[Int]] = []
 
         func neighbours(of index: Int) -> [Int] {
@@ -145,6 +149,7 @@ extension MindControl {
             encodeFrame(into: commandBuffer, output: pass, width: width, height: height, pixelScale: scale, time: Float(now - startTime))
             commandBuffer.present(drawable)
             commandBuffer.commit()
+            onFrame?()
         }
 
         // MARK: Frame encoding
@@ -166,6 +171,10 @@ extension MindControl {
             glowScale: glowScale,
             usesScale: usesScale
             )
+
+            lastCamera = CameraSnapshot(viewProjection: frame.viewProjection,
+                                        viewportPoints: SIMD2(Float(width), Float(height)) / pixelScale,
+                                        projScaleY: frame.projScaleY)
 
             encodeScene(commandBuffer, target: hdr, frame: &frame)
             let bloomTexture = bloom.encode(commandBuffer: commandBuffer, source: hdr, pipelines: pipelines) ?? hdr
