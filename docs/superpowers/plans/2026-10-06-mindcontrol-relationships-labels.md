@@ -2445,7 +2445,7 @@ struct LabelPlannerTests {
     @Test func labelSitsRightOfItsNode() {
         let labels = plan([folder("src")], [screen(0, 100, 100, radius: 4)])
         #expect(labels.first?.frame.minX == 100 + 4 + LabelPlanner.gap)
-        #expect(labels.first?.frame.midY == 100)
+        #expect(abs((labels.first?.frame.midY ?? 0) - 100) < 1e-9)
     }
 }
 #endif
