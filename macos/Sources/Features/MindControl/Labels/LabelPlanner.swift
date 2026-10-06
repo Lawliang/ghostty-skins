@@ -19,6 +19,8 @@ extension MindControl {
         static let fileShowRadius: CGFloat = 2.5
         static let fileFullRadius: CGFloat = 5
         static let gap: CGFloat = 4
+        /// Candidates are in priority order; beyond this many tries the rest wouldn't fit anyway.
+        static let maxAttempts = budget * 6
 
         struct Input {
             let screen: [ScreenNode]
@@ -34,34 +36,52 @@ extension MindControl {
         private struct Candidate {
             let screen: ScreenNode
             let tier: Int        // 0 focus, 1 neighbour, 2 folder, 3 file
-            let key: CGFloat     // lower first within a tier
         }
 
         static func plan(_ input: Input) -> [PlacedLabel] {
-            var candidates: [Candidate] = []
-            for s in input.screen {
+            // One packed sort key per candidate — tier, then size (bigger first), then index — so the
+            // sort compares plain integers (a closure comparator was the frame's biggest cost).
+            func rank(_ value: CGFloat) -> UInt64 {
+                let maxRank: CGFloat = 0x0FFF_FFFF
+                return UInt64(max(0, min(maxRank, maxRank - value)))
+            }
+            var keys: [UInt64] = []
+            keys.reserveCapacity(input.screen.count)
+            for (position, s) in input.screen.enumerated() {
                 let node = input.nodes[s.index]
+                let tier: UInt64
+                let order: UInt64
                 if s.index == input.focus {
-                    candidates.append(Candidate(screen: s, tier: 0, key: 0))
+                    (tier, order) = (0, 0)
                 } else if input.neighbours.contains(s.index) {
-                    candidates.append(Candidate(screen: s, tier: 1, key: -s.radius))
+                    (tier, order) = (1, rank(s.radius * 1_000))
                 } else if node.kind == .folder || node.kind == .root {
-                    candidates.append(Candidate(screen: s, tier: 2, key: -CGFloat(node.descendantFiles)))
+                    (tier, order) = (2, rank(CGFloat(node.descendantFiles)))
                 } else if s.radius >= fileShowRadius {
-                    candidates.append(Candidate(screen: s, tier: 3, key: -s.radius))
+                    (tier, order) = (3, rank(s.radius * 1_000))
+                } else {
+                    continue
+                }
+                keys.append(tier << 60 | order << 32 | UInt64(position))
+            }
+            // C's qsort is always optimised; Swift's generic sort is slow in Debug builds, where this
+            // runs every frame while developing.
+            keys.withUnsafeMutableBufferPointer { buffer in
+                guard let base = buffer.baseAddress else { return }
+                qsort(base, buffer.count, MemoryLayout<UInt64>.stride) { a, b in
+                    let x = a!.load(as: UInt64.self), y = b!.load(as: UInt64.self)
+                    return x < y ? -1 : (x > y ? 1 : 0)
                 }
             }
-            candidates.sort { a, b in
-                if a.tier != b.tier { return a.tier < b.tier }
-                if a.key != b.key { return a.key < b.key }
-                return a.screen.index < b.screen.index
+            let candidates = keys.map { key in
+                Candidate(screen: input.screen[Int(key & 0xFFFF_FFFF)], tier: Int(key >> 60))
             }
 
             let highlighting = input.focus != nil
             var placed: [PlacedLabel] = []
             var occupied = RectGrid(cell: 64)
-            for candidate in candidates {
-                if placed.count >= budget { break }
+            for (attempt, candidate) in candidates.enumerated() {
+                if placed.count >= budget || attempt >= maxAttempts { break }
                 let s = candidate.screen
                 let node = input.nodes[s.index]
                 let isFolder = node.kind == .folder || node.kind == .root
@@ -100,19 +120,25 @@ extension MindControl {
         init(cell: CGFloat) { self.cell = cell }
 
         func intersects(_ rect: CGRect) -> Bool {
-            keys(for: rect).contains { key in buckets[key]?.contains { $0.intersects(rect) } ?? false }
+            let (xs, ys) = span(of: rect)
+            for x in xs {
+                for y in ys {
+                    if let bucket = buckets[key(x, y)], bucket.contains(where: { $0.intersects(rect) }) { return true }
+                }
+            }
+            return false
         }
 
         mutating func insert(_ rect: CGRect) {
-            for key in keys(for: rect) { buckets[key, default: []].append(rect) }
+            let (xs, ys) = span(of: rect)
+            for x in xs { for y in ys { buckets[key(x, y), default: []].append(rect) } }
         }
 
-        private func keys(for rect: CGRect) -> [Int64] {
-            let x0 = Int64((rect.minX / cell).rounded(.down)), x1 = Int64((rect.maxX / cell).rounded(.down))
-            let y0 = Int64((rect.minY / cell).rounded(.down)), y1 = Int64((rect.maxY / cell).rounded(.down))
-            var keys: [Int64] = []
-            for x in x0...x1 { for y in y0...y1 { keys.append(x << 32 ^ (y & 0xFFFF_FFFF)) } }
-            return keys
+        private func span(of rect: CGRect) -> (ClosedRange<Int64>, ClosedRange<Int64>) {
+            (Int64((rect.minX / cell).rounded(.down))...Int64((rect.maxX / cell).rounded(.down)),
+             Int64((rect.minY / cell).rounded(.down))...Int64((rect.maxY / cell).rounded(.down)))
         }
+
+        private func key(_ x: Int64, _ y: Int64) -> Int64 { x << 32 ^ (y & 0xFFFF_FFFF) }
     }
 }

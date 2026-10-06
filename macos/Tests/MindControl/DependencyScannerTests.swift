@@ -143,5 +143,23 @@ struct DependencyScannerTests {
             try DependencyScanner.scan(tree: p.tree, shouldStop: { true })
         }
     }
+
+    @Test func frameworkNamesAndAttributesDontLink() throws {
+        let p = try Project()
+        try p.write("Model.swift", "enum Store {\n    struct State {}\n}\nenum Failure {\n    struct Error {}\n}\nstruct Widget {}")
+        try p.write("View.swift", "struct Screen { @State var on = false\n func f() throws -> Error? { nil } }")
+        try p.write("Uses.swift", "let w = Widget()")
+        #expect(try scan(p) == [Dependency(from: "Uses.swift", to: "Model.swift")])
+    }
+
+    @Test func onlyRegularFilesAreRead() throws {
+        let p = try Project()
+        try p.write("ok.zig", "")
+        let pipe = p.url.appendingPathComponent("pipe.zig")
+        #expect(mkfifo(pipe.path, 0o644) == 0)
+        #expect(DependencyScanner.isRegularFile(p.url.appendingPathComponent("ok.zig")))
+        #expect(!DependencyScanner.isRegularFile(pipe))
+        #expect(!DependencyScanner.isRegularFile(p.url.appendingPathComponent("missing.zig")))
+    }
 }
 #endif

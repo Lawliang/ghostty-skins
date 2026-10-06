@@ -74,5 +74,15 @@ struct ParserTests {
         """
         #expect(MarkdownLinks.targets(in: source) == ["docs/guide.md", "img/arch.png", "my file.md", "../up.md"])
     }
+
+    /// Generated files without semicolons or quotes must not make the import pattern backtrack for seconds.
+    @Test func scriptImportsStayFastOnQuoteFreeFiles() {
+        let source = (0..<8_000).map { "export const VALUE_\($0) = \($0)" }.joined(separator: "\n")
+        let clock = ContinuousClock()
+        var found: [String] = []
+        let elapsed = clock.measure { found = ScriptImports.specifiers(in: source) }
+        #expect(found.isEmpty)
+        #expect(elapsed < .milliseconds(500))
+    }
 }
 #endif

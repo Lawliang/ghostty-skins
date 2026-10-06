@@ -30,7 +30,7 @@ extension MindControl {
                     declarers[name, default: []].insert(path)
                 }
             }
-            declarers = declarers.filter { $0.value.count <= maxDeclarers }
+            declarers = declarers.filter { $0.value.count <= maxDeclarers && !SwiftSymbols.frameworkTypeNames.contains($0.key) }
 
             var result: [Dependency] = []
             for path in tree.files {
@@ -67,12 +67,18 @@ extension MindControl {
             }
         }
 
-        /// UTF-8 contents, or nil for missing, oversized or non-UTF-8 files.
+        /// UTF-8 contents, or nil for missing, oversized, non-regular (pipes, sockets) or non-UTF-8 files.
         private static func read(_ path: String, root: URL) -> String? {
-            let url = root.appendingPathComponent(path)
-            guard let size = (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize, size <= maxFileBytes,
+            let url = root.appendingPathComponent(path).resolvingSymlinksInPath()
+            guard isRegularFile(url),
+                  let size = (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize, size <= maxFileBytes,
                   let data = try? Data(contentsOf: url) else { return nil }
             return String(data: data, encoding: .utf8)
+        }
+
+        /// Only regular files are read: opening a FIFO would block the scan forever.
+        static func isRegularFile(_ url: URL) -> Bool {
+            (try? url.resourceValues(forKeys: [.isRegularFileKey]))?.isRegularFile == true
         }
 
         private static func child(_ directory: String, _ name: String) -> String {

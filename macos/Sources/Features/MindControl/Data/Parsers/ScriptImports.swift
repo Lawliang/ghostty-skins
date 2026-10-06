@@ -6,7 +6,8 @@ extension MindControl {
         static let extensions = ["ts", "tsx", "js", "jsx", "mjs", "cjs"]
 
         private static let pattern = ParserSupport.regex(
-            #"(?:import|export)\s[^'"`;]*?\sfrom\s*['"]([^'"]+)['"]"# + "|" +
+            // The span before `from` is bounded so quote-free generated files can't make matching quadratic.
+            #"(?:import|export)\s[^'"`;]{0,300}?\sfrom\s*['"]([^'"]+)['"]"# + "|" +
             #"\bimport\s*['"]([^'"]+)['"]"# + "|" +
             #"\brequire\(\s*['"]([^'"]+)['"]\s*\)"# + "|" +
             #"\bimport\(\s*['"]([^'"]+)['"]\s*\)"#)

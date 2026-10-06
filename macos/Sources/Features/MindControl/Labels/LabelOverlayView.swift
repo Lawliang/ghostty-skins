@@ -5,7 +5,13 @@ extension MindControl {
     /// Text labels over the Metal view, drawn with a reusable pool of CATextLayers. Never takes the mouse.
     final class LabelOverlayView: NSView {
         private var pool: [CATextLayer] = []
-        private static var sizeCache: [String: CGSize] = [:]
+        private struct SizeKey: Hashable {
+            let text: String
+            let size: CGFloat
+            let bold: Bool
+        }
+
+        private static var sizeCache: [SizeKey: CGSize] = [:]
 
         override init(frame: NSRect) {
             super.init(frame: frame)
@@ -23,7 +29,7 @@ extension MindControl {
 
         /// Text size, cached because labels are re-planned every frame.
         static func measure(_ text: String, _ size: CGFloat, _ bold: Bool) -> CGSize {
-            let key = "\(bold ? "b" : "r")\(size)|\(text)"
+            let key = SizeKey(text: text, size: size, bold: bold)
             if let cached = sizeCache[key] { return cached }
             let measured = (text as NSString).size(withAttributes: [.font: font(size: size, bold: bold)])
             let result = CGSize(width: ceil(measured.width), height: ceil(measured.height))
@@ -56,8 +62,11 @@ extension MindControl {
                 let label = labels[i]
                 text.isHidden = false
                 if (text.string as? String) != label.text { text.string = label.text }
-                text.font = Self.font(size: label.fontSize, bold: label.isBold)
-                text.fontSize = label.fontSize
+                // Reassigning font properties re-rasterises the text; only do it when they change.
+                if text.fontSize != label.fontSize || (text.font as? NSFont)?.fontDescriptor.symbolicTraits.contains(.bold) != label.isBold {
+                    text.font = Self.font(size: label.fontSize, bold: label.isBold)
+                    text.fontSize = label.fontSize
+                }
                 text.frame = label.frame
                 text.opacity = Float(label.opacity)
             }

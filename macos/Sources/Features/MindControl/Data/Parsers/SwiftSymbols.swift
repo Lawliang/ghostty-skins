@@ -4,6 +4,17 @@ extension MindControl {
     /// Swift files don't import each other, so relationships come from type names:
     /// which types a file declares, and which declared types it mentions.
     enum SwiftSymbols {
+        /// Standard library, Foundation and SwiftUI names that projects also declare as nested types.
+        /// Linking every mention of these to the project's declaration would draw false dependencies.
+        static let frameworkTypeNames: Set<String> = [
+            "Action", "Any", "AnyObject", "Array", "Binding", "Bool", "Button", "Character", "Codable", "Color",
+            "Configuration", "Context", "Coordinator", "Data", "Date", "Dictionary", "Double", "Element",
+            "Environment", "Error", "Event", "Float", "Font", "Group", "ID", "Image", "Index", "Int", "Item",
+            "Key", "Kind", "Label", "List", "Mode", "Never", "Notification", "Optional", "Options", "Published",
+            "Result", "Section", "Self", "Set", "Shape", "State", "Status", "String", "Style", "Text", "Type",
+            "URL", "UUID", "Value", "View", "Void",
+        ]
+
         private static let declaration = ParserSupport.regex(
             #"^[ \t]*(?:@\w+(?:\([^)\n]*\))?[ \t]+)*"# +
             #"((?:(?:public|internal|open|private|fileprivate|final|indirect|nonisolated)(?:\([^)\n]*\))?[ \t]+)*)"# +
@@ -70,7 +81,9 @@ extension MindControl {
                 if isIdentifierStart(b) {
                     let start = i
                     while i < count, isIdentifier(bytes[i]) { i += 1 }
-                    if b >= 65, b <= 90 { result.insert(String(decoding: bytes[start..<i], as: UTF8.self)) }
+                    // `@State`, `@MainActor`: attributes aren't references to project types.
+                    let isAttribute = start > 0 && bytes[start - 1] == UInt8(ascii: "@")
+                    if b >= 65, b <= 90, !isAttribute { result.insert(String(decoding: bytes[start..<i], as: UTF8.self)) }
                     continue
                 }
                 i += 1
