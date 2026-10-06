@@ -8,6 +8,7 @@ extension MindControl {
 
         @State private var renderer: Renderer?
         @State private var rendererError: String?
+        @StateObject private var inspector = Inspector()
 
         /// Matches the composite pass's outer background so the panel never flashes a different colour.
         private static let background = Color(red: 0.012, green: 0.016, blue: 0.043)
@@ -18,7 +19,7 @@ extension MindControl {
                 Self.background
 
                 if let renderer {
-                    MetalGraphView(renderer: renderer, onEscape: onClose)
+                    MetalGraphView(renderer: renderer, inspector: inspector, onEscape: onClose)
                 }
 
                 if let message = rendererError ?? Self.centerMessage(for: model.state) {
@@ -39,9 +40,16 @@ extension MindControl {
                     Legend()
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
                 }
+
+                if let pinned = inspector.pinned, let renderer, renderer.nodes.indices.contains(pinned),
+                   let graph = model.graph, let details = NodeDetails.make(graph: graph, nodeID: renderer.nodes[pinned].id) {
+                    InfoCard(details: details)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+                }
             }
             .onAppear(perform: startRenderer)
             .onChange(of: model.graphVersion) { _ in
+                inspector.reset()
                 renderer?.setGraph(model.graph ?? Self.emptyGraph)
             }
         }
