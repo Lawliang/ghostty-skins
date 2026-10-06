@@ -13,7 +13,7 @@ struct ExtensionSidebarLayout<Content: View>: View {
             content()
                 .overlay {
                     if let ext = model.active {
-                        ExtensionContentView(ext: ext)
+                        ExtensionContentView(ext: ext, model: model)
                             .transition(.opacity)
                     }
                 }

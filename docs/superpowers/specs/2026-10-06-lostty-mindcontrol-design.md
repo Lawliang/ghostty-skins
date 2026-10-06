@@ -4,6 +4,12 @@ Date: 2026-10-06
 Status: Implemented
 Branch: `mindcontrol` (worktree `.claude/worktrees/mindcontrol`, based on `skins` @ 7121f2c)
 
+> **Update (2026-10-06):** the edge tab and drawer (§5) were replaced by the extensions
+> sidebar from `skins`. The visualizer icon opens `MindControl.Panel` over the terminal area
+> beside the sidebar; `ExtensionSidebarModel` (one per window) owns the `MindControl.Model`,
+> loads it when the visualizer opens, and returns focus to the terminal when it closes.
+> Esc calls `select(.codebaseVisualizer)`. `MindControlDrawer.swift` is gone.
+
 ## 1. Goal
 
 Add MindControl to Lostty: a 3D "neural / synaptic" map of the project the focused

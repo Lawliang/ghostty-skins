@@ -1016,6 +1016,17 @@ class TerminalController: BaseTerminalController, TabGroupCloseCoordinator.Contr
         super.windowDidLoad()
         guard let window else { return }
 
+        // Lostty: extensions read the focused terminal's directory and hand focus back on close.
+        if let sidebar = (window as? TerminalWindow)?.extensionSidebarModel {
+            sidebar.workingDirectory = { [weak self] in
+                guard let pwd = self?.focusedSurface?.pwd, !pwd.isEmpty else { return nil }
+                return URL(fileURLWithPath: pwd)
+            }
+            sidebar.focusTerminal = { [weak self] in
+                if let surface = self?.focusedSurface { Ghostty.moveFocus(to: surface) }
+            }
+        }
+
         // I copy this because we may change the source in the future but also because
         // I regularly audit our codebase for "ghostty.config" access because generally
         // you shouldn't use it. Its safe in this case because for a new window we should

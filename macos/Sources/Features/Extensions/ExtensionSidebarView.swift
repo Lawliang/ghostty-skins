@@ -151,32 +151,19 @@ private struct AddExtensionIcon: View {
     }
 }
 
-/// What an open extension shows in the terminal area.
+/// What an open extension shows in the terminal area. It exists only while its icon is selected,
+/// so removing it is the extension's "closed" signal (MindControl stops rendering with it).
 struct ExtensionContentView: View {
     let ext: LosttyExtension
+    let model: ExtensionSidebarModel
 
     var body: some View {
         switch ext {
         case .codebaseVisualizer:
-            // MindControl (the `mindcontrol` branch) replaces this with its panel.
-            ZStack {
-                RadialGradient(
-                    colors: [
-                        Color(red: 0.05, green: 0.06, blue: 0.19),
-                        Color(red: 0.03, green: 0.03, blue: 0.09),
-                        Color(red: 0.01, green: 0.01, blue: 0.035),
-                    ],
-                    center: .center, startRadius: 0, endRadius: 700)
-                VStack(spacing: 8) {
-                    NodeGlyph().frame(width: 40, height: 40)
-                    Text("Codebase visualizer")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.9))
-                    Text("The 3D map arrives with MindControl.")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.white.opacity(0.55))
-                }
-            }
+            MindControl.Panel(model: model.mindControl, onClose: {
+                // Esc; guarded so a key-repeated Esc can't reopen it.
+                if model.active == .codebaseVisualizer { model.select(.codebaseVisualizer) }
+            })
         }
     }
 }
