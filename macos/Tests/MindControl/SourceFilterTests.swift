@@ -8,7 +8,7 @@ struct SourceFilterTests {
     @Test(arguments: [
         "app/Sources/App.swift", "src/terminal/Terminal.zig", "relay/server.ts", "web/App.tsx",
         "lib/util.py", "core/engine.rs", "cmd/main.go", "Renderer/Shaders/Nodes.metal", "include/api.h",
-        "ui/Button.vue", "main.c", "Sources/Bridge.mm",
+        "ui/Button.vue", "main.c", "Sources/Bridge.mm", "firmware/arcaPrototype/arcaPrototype.ino",
     ])
     func keepsFeatureSource(path: String) {
         #expect(SourceFilter.isFeatureSource(path), "\(path) should be kept")

@@ -7,7 +7,7 @@ extension MindControl {
         static let sourceExtensions: Set<String> = [
             "swift", "m", "mm", "h", "hh", "hpp", "c", "cc", "cpp", "cxx", "zig", "rs", "go", "py",
             "ts", "tsx", "js", "jsx", "mjs", "cjs", "kt", "kts", "java", "rb", "cs", "metal", "dart",
-            "lua", "vue", "svelte",
+            "lua", "vue", "svelte", "ino",
         ]
 
         /// Folder names (compared lowercased) whose contents never implement features.
