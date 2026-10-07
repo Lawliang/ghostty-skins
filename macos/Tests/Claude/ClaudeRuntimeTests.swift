@@ -78,24 +78,20 @@ struct ClaudeRuntimeTests {
         #expect(runtime.phase(other) == .off)
     }
 
-    // Esc interrupts never send Stop; Claude's title shows ✳ when idle and a
-    // spinner while working, so a racing pane idle-titled for the grace
-    // period stops.
-    @Test func idleTitleAfterGraceStopsARacingTrace() {
+    // Esc interrupts send no Stop. The agents title the pane with a spinner
+    // while working, so a racing pane whose title turns idle stops at once.
+    @Test func idleTitleStopsARacingTraceImmediately() {
         let runtime = makeRuntime()
         runtime.apply(.busy, to: pane)
         runtime.titleChanged(pane, title: "✳ My session")
-        runPending()
         #expect(runtime.phase(pane) == .off)
     }
 
-    @Test func spinnerTitleCancelsTheIdleCheck() {
+    @Test func spinnerTitleKeepsTheTraceRacing() {
         let runtime = makeRuntime()
         runtime.apply(.busy, to: pane)
-        runtime.titleChanged(pane, title: "✳ My session")
         runtime.titleChanged(pane, title: "◐ My session")
-        runPending()
-        guard case .racing = runtime.phase(pane) else { Issue.record("expected racing, got \(runtime.phase(pane))"); return }
+        guard case .racing = runtime.phase(pane) else { Issue.record("expected racing"); return }
     }
 
     @Test func idleTitleAlreadyShowingWhenBusyArrives() {
@@ -114,6 +110,32 @@ struct ClaudeRuntimeTests {
         runtime.apply(.idle, to: pane)
         runPending()
         #expect(runtime.phase(pane) == .off)
+    }
+
+    // Codex: a braille spinner while working, the plain folder name when
+    // idle, and no Stop hook after Esc. Once a spinner was seen, a title
+    // without one ends the trace.
+    @Test func codexSpinnerThenPlainTitleStopsTheTrace() {
+        let runtime = makeRuntime()
+        runtime.apply(.busy, to: pane)
+        runtime.titleChanged(pane, title: "⠋ codexproj")
+        runtime.titleChanged(pane, title: "codexproj")
+        #expect(runtime.phase(pane) == .off)
+    }
+
+    @Test func noDelayedChecksAreScheduled() {
+        let runtime = makeRuntime()
+        runtime.apply(.busy, to: pane)
+        runtime.titleChanged(pane, title: "⠋ codexproj")
+        runtime.titleChanged(pane, title: "codexproj")
+        #expect(harness.pending.isEmpty)
+    }
+
+    @Test func recognizesBothSpinners() {
+        #expect(ClaudeRuntime.isSpinner("◐ My session"))
+        #expect(ClaudeRuntime.isSpinner("⠦ codexproj"))
+        #expect(!ClaudeRuntime.isSpinner("✳ My session"))
+        #expect(!ClaudeRuntime.isSpinner("codexproj"))
     }
 
     @Test func otherTitlesNeverEndATrace() {

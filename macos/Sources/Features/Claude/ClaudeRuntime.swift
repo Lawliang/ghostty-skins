@@ -19,17 +19,14 @@ final class ClaudeRuntime: ObservableObject {
     /// looked at it since.
     @Published private(set) var awaiting: Set<UUID> = []
 
-    /// How long a racing pane's title must read idle before the trace ends.
-    static let idleTitleGrace: TimeInterval = 2.5
-
     private let now: () -> Date
     private let schedule: Scheduler
-    /// When each pane's title last switched to Claude's idle marker.
-    private var idleTitleSince: [UUID: Date] = [:]
     /// Panes not focused right now. Panes start focused (SurfaceView does).
     private var unfocused: Set<UUID> = []
     /// Panes whose current wait was already seen; reset when Claude works again.
     private var seen: Set<UUID> = []
+    /// Panes whose title has shown a working spinner since the trace started.
+    private var sawSpinner: Set<UUID> = []
 
     init(
         now: @escaping () -> Date = Date.init,
@@ -62,10 +59,10 @@ final class ClaudeRuntime: ObservableObject {
 
     func surfaceClosed(_ id: UUID) {
         phases[id] = nil
-        idleTitleSince[id] = nil
         unfocused.remove(id)
         seen.remove(id)
         awaiting.remove(id)
+        sawSpinner.remove(id)
     }
 
     /// A pane is focused when its window is key and it is the selected pane.
@@ -80,26 +77,31 @@ final class ClaudeRuntime: ObservableObject {
         }
     }
 
-    /// Claude Code titles the pane "✳ …" when idle and with a spinner while
-    /// working. An Esc interrupt sends no Stop hook, so a racing pane whose
-    /// title stays idle for `idleTitleGrace` stops.
+    /// Agents title the pane with a spinner while working: Claude "◐ …"
+    /// (then "✳ …" when idle), Codex "⠋ …" (then just the folder name).
+    /// An Esc interrupt sends no Stop hook, so a racing pane whose title
+    /// turns idle stops at once. A title without a spinner only counts as
+    /// idle after a spinner was seen, so panes whose titles never show one
+    /// (e.g. inside tmux) keep their trace until a hook ends it. Only title
+    /// changes count: a title left over from before the prompt never stops
+    /// the trace that prompt started.
     func titleChanged(_ id: UUID, title: String) {
-        guard title.hasPrefix("✳") else {
-            idleTitleSince[id] = nil
-            // A spinner means Claude is working again (e.g. after a permission
-            // prompt, which sends no UserPromptSubmit): the next wait is new.
-            if Self.isSpinner(title) { seen.remove(id) }
+        if Self.isSpinner(title) {
+            sawSpinner.insert(id)
+            // Working again (e.g. after a permission prompt, which sends no
+            // UserPromptSubmit): the next wait is new.
+            seen.remove(id)
             return
         }
-        if idleTitleSince[id] == nil { idleTitleSince[id] = now() }
-        checkIdleTitle(id)
+        guard title.hasPrefix("✳") || sawSpinner.contains(id) else { return }
+        if case .racing = phase(id) { apply(.exit, to: id) }
     }
 
     func apply(_ state: ClaudeState, to id: UUID) {
         let next = phase(id).applying(state, now: now())
         store(next, for: id)
-        if case .racing = next, state == .busy { checkIdleTitle(id) }
 
+        if next == .off { sawSpinner.remove(id) }
         switch state {
         case .busy:
             seen.remove(id)
@@ -116,24 +118,16 @@ final class ClaudeRuntime: ObservableObject {
         }
     }
 
-    /// Claude Code's working-title spinner glyphs.
+    /// Working-title spinners: Claude's ◐◑◒◓, Codex's braille dots.
     static func isSpinner(_ title: String) -> Bool {
         guard let first = title.unicodeScalars.first else { return false }
-        return "◐◑◒◓".unicodeScalars.contains(first)
+        return "◐◑◒◓".unicodeScalars.contains(first) || (0x2801...0x28FF).contains(first.value)
     }
 
     /// Debug builds: a fake 4s busy → idle cycle to review a style by eye.
     func debugCycle(_ id: UUID) {
         apply(.busy, to: id)
         schedule(4) { [weak self] in self?.apply(.idle, to: id) }
-    }
-
-    private func checkIdleTitle(_ id: UUID) {
-        schedule(Self.idleTitleGrace) { [weak self] in
-            guard let self, case .racing = self.phase(id), let since = self.idleTitleSince[id],
-                  self.now().timeIntervalSince(since) >= Self.idleTitleGrace else { return }
-            self.apply(.exit, to: id)
-        }
     }
 
     private func store(_ phase: TracePhase, for id: UUID) {

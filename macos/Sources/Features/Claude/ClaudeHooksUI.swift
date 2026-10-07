@@ -1,29 +1,10 @@
 #if os(macOS)
 import AppKit
 
-/// The first-launch offer and the Claude Integration menu item (spec §5.2).
+/// The Claude Integration menu item (spec §5.2). Missing hooks are offered
+/// at launch by notification bubbles (HookNotifications).
 @MainActor
 enum ClaudeHooksUI {
-    static func promptAtLaunchIfNeeded() {
-        let claudeDir = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".claude")
-        let defaults = UserDefaults.ghostty
-        let prompted = defaults.integer(forKey: ClaudeHooksPrompt.defaultsKey)
-        let claudeDirExists = FileManager.default.fileExists(atPath: claudeDir.path)
-        guard claudeDirExists, prompted < ClaudeHooksPrompt.hookVersion else { return }
-
-        DispatchQueue.global(qos: .utility).async {
-            let status = ClaudeHooksCLI().status()
-            DispatchQueue.main.async {
-                MainActor.assumeIsolated {
-                    guard ClaudeHooksPrompt.shouldPrompt(
-                        claudeDirExists: claudeDirExists, status: status, promptedVersion: prompted) else { return }
-                    UserDefaults.ghostty.set(ClaudeHooksPrompt.hookVersion, forKey: ClaudeHooksPrompt.defaultsKey)
-                    offerInstall(update: status == .partial)
-                }
-            }
-        }
-    }
-
     static func installMenuItem(after anchor: NSMenuItem?) {
         guard let anchor, let menu = anchor.menu else { return }
         let item = NSMenuItem(title: "Claude Integration…", action: #selector(MenuTarget.open(_:)), keyEquivalent: "")
@@ -34,12 +15,13 @@ enum ClaudeHooksUI {
     /// Install / Not now / Show changes.
     static func offerInstall(update: Bool) {
         let alert = NSAlert()
-        alert.messageText = update ? "Update Lostty's Claude hooks?" : "Show a trace while Claude is working?"
+        alert.messageText = update ? "Update Lostty's hooks?" : "Show a trace while Claude or Codex is working?"
         alert.informativeText = update
-            ? "Your Claude hooks are from an older Lostty. Lostty will update its 4 hooks in "
-                + "~/.claude/settings.json (a backup is saved first)."
-            : "Lostty will add 4 hooks to ~/.claude/settings.json (a backup is saved first). They do nothing "
-                + "outside Lostty. You can remove them from Lostty → Claude Integration…"
+            ? "Lostty's hooks are from an older Lostty, or Codex is missing them. Lostty will update its hooks in "
+                + "~/.claude/settings.json and ~/.codex/hooks.json (a backup is saved first)."
+            : "Lostty will add its hooks to ~/.claude/settings.json and, if you use Codex, ~/.codex/hooks.json "
+                + "(a backup is saved first). They do nothing outside Lostty. You can remove them from "
+                + "Lostty → Claude Integration…"
         alert.addButton(withTitle: update ? "Update" : "Install")
         alert.addButton(withTitle: "Not now")
         alert.addButton(withTitle: "Show changes")
@@ -53,7 +35,8 @@ enum ClaudeHooksUI {
     static func showChanges(update: Bool) {
         let alert = NSAlert()
         alert.messageText = "Lostty adds these hooks"
-        alert.informativeText = "Added to the \"hooks\" section of ~/.claude/settings.json. "
+        alert.informativeText = "Added to the \"hooks\" section of ~/.claude/settings.json (and ~/.codex/hooks.json "
+            + "for Codex, with just the first two events). "
             + "Your other settings and hooks are kept."
         let scroll = NSTextView.scrollableTextView()
         scroll.frame = NSRect(x: 0, y: 0, width: 520, height: 260)
