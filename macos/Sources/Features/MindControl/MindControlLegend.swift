@@ -7,7 +7,6 @@ extension MindControl {
         private static let uses = Color(red: 1.0, green: 0.85, blue: 0.58)
         private static let folder = Color(red: 0.54, green: 0.74, blue: 1.0)
         private static let source = Color(red: 0.48, green: 0.93, blue: 1.0)
-        private static let document = Color(red: 0.83, green: 0.63, blue: 1.0)
 
         var body: some View {
             VStack(alignment: .leading, spacing: 6) {
@@ -16,7 +15,6 @@ extension MindControl {
                 HStack(spacing: 10) {
                     dot(Self.folder, "folder")
                     dot(Self.source, "source")
-                    dot(Self.document, "document")
                 }
             }
             .font(.system(size: 10.5))

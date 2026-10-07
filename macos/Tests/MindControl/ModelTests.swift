@@ -73,18 +73,18 @@ struct ModelTests {
 
     @Test func panelTexts() {
         let full = tree(["a.swift", "b.swift"])
-        #expect(MindControl.Panel.statusText(for: .ready(full)) == "proj · 2 files")
+        #expect(MindControl.Panel.statusText(for: .ready(full)) == "proj · 2 source files")
         let capped = tree(Array(repeating: "x", count: 3), total: 12_345)
-        #expect(MindControl.Panel.statusText(for: .ready(capped)) == "proj · showing 3 of 12,345 files")
+        #expect(MindControl.Panel.statusText(for: .ready(capped)) == "proj · showing 3 of 12,345 source files")
         #expect(MindControl.Panel.statusText(for: .scanning) == nil)
         var partial = tree(Array(repeating: "x", count: 3), total: 4)
         partial.totalIsLowerBound = true
-        #expect(MindControl.Panel.statusText(for: .ready(partial)) == "proj · showing the first 3 files")
+        #expect(MindControl.Panel.statusText(for: .ready(partial)) == "proj · showing the first 3 source files")
 
         #expect(MindControl.Panel.centerMessage(for: .ready(full)) == nil)
         #expect(MindControl.Panel.centerMessage(for: .scanning) == "Mapping project…")
         #expect(MindControl.Panel.centerMessage(for: .noProject) == "This terminal hasn't reported a working directory.")
-        #expect(MindControl.Panel.centerMessage(for: .empty("proj")) == "proj has no files to map.")
+        #expect(MindControl.Panel.centerMessage(for: .empty("proj")) == "proj has no source files to map.")
         #expect(MindControl.Panel.centerMessage(for: .failed("Can't read /x.")) == "Can't read /x.")
     }
 

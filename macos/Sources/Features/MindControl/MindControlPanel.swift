@@ -70,12 +70,12 @@ extension MindControl {
         static func statusText(for state: Model.State) -> String? {
             guard case .ready(let tree) = state else { return nil }
             if tree.totalIsLowerBound {
-                return "\(tree.rootName) · showing the first \(tree.files.count.formatted()) files"
+                return "\(tree.rootName) · showing the first \(tree.files.count.formatted()) source files"
             }
             if tree.truncated {
-                return "\(tree.rootName) · showing \(tree.files.count.formatted()) of \(tree.totalFileCount.formatted()) files"
+                return "\(tree.rootName) · showing \(tree.files.count.formatted()) of \(tree.totalFileCount.formatted()) source files"
             }
-            return "\(tree.rootName) · \(tree.files.count.formatted()) files"
+            return "\(tree.rootName) · \(tree.files.count.formatted()) source files"
         }
 
         static func centerMessage(for state: Model.State) -> String? {
@@ -83,7 +83,7 @@ extension MindControl {
             case .idle, .ready: nil
             case .scanning: "Mapping project…"
             case .noProject: "This terminal hasn't reported a working directory."
-            case .empty(let name): "\(name) has no files to map."
+            case .empty(let name): "\(name) has no source files to map."
             case .failed(let message): message
             }
         }

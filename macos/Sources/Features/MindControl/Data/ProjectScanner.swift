@@ -31,6 +31,8 @@ extension MindControl {
         var fileCap = ProjectScanner.defaultFileCap
         /// `~/Library` is skipped when the root is the home directory.
         var homeDirectory = NSHomeDirectory()
+        /// Which files make the map; by default only feature source code.
+        var includes: (String) -> Bool = SourceFilter.isFeatureSource
 
         /// The git root containing `pwd`, or `pwd` itself outside git.
         static func projectRoot(for pwd: URL) -> URL {
@@ -61,9 +63,10 @@ extension MindControl {
             var all: [String]
             var complete = true
             if gitRoot != nil, let listed = try? Self.gitFiles(root: root, includeUntracked: !isBroadRoot) {
-                all = listed
+                all = listed.filter(includes)
             } else {
-                (all, complete) = try Self.walk(root: root, limit: fileCap, skipLibrary: isHome, shouldStop: shouldStop)
+                (all, complete) = try Self.walk(root: root, limit: fileCap, skipLibrary: isHome,
+                                                includes: includes, shouldStop: shouldStop)
             }
             if shouldStop() { throw CancellationError() }
 
@@ -103,7 +106,7 @@ extension MindControl {
 
         /// Breadth-first, so the shallowest files survive; stops once more than `limit` files are found.
         /// Returns whether the walk finished.
-        private static func walk(root: URL, limit: Int, skipLibrary: Bool,
+        private static func walk(root: URL, limit: Int, skipLibrary: Bool, includes: (String) -> Bool,
                                  shouldStop: () -> Bool) throws -> (files: [String], complete: Bool) {
             let fileManager = FileManager.default
             let keys: [URLResourceKey] = [.isDirectoryKey, .isSymbolicLinkKey]
@@ -131,7 +134,7 @@ extension MindControl {
                             || (skipLibrary && depth == 0 && name == "Library")
                             || depth + 1 >= maxWalkDepth
                         if !skipped { queue.append((path, depth + 1)) }
-                    } else {
+                    } else if includes(path) {
                         files.append(path)
                         if files.count > limit { return (files, false) }
                     }
