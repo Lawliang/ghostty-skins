@@ -44,7 +44,9 @@ extension MindControl {
     }
 
     /// Curves for arrow specs: out of the facing edges of the two boxes, with parallel arrows between
-    /// the same two boxes spread apart so a flow and its return never overlap.
+    /// the same two boxes spread apart so a flow and its return never overlap. When that curve passes over
+    /// another box, the arrows between the pair try other edges (including a bracket out of the same side
+    /// of both) and take the one crossing the fewest boxes.
     enum ArrowRouter {
         static func curves(for layout: MapLayout) -> [String: Curve] {
             var rects: [String: CGRect] = [:]
@@ -57,13 +59,33 @@ extension MindControl {
                 if groups[key] == nil { keys.append(key) }
                 groups[key, default: []].append(arrow)
             }
-            var curves: [String: Curve] = [:]
-            for key in keys {
+            let memberGroups = keys.map { key -> [Member] in
                 let group = groups[key] ?? []
-                for (index, arrow) in group.enumerated() {
-                    guard let a = rects[arrow.from], let b = rects[arrow.to] else { continue }
+                return group.enumerated().compactMap { index, arrow in
+                    guard let a = rects[arrow.from], let b = rects[arrow.to] else { return nil }
                     let offset = (CGFloat(index) - CGFloat(group.count - 1) / 2) * LayoutMetrics.parallelSpacing
-                    curves[arrow.id] = route(from: a, to: b, offset: offset, bend: arrow.bend)
+                    return Member(arrow: arrow, from: a, to: b, offset: offset)
+                }
+            }
+            // Facing-edge curves first; a group that has to move away from a box then sees where the others run.
+            var curves: [String: Curve] = [:]
+            var lines: [String: Polyline] = [:]
+            for member in memberGroups.joined() {
+                let curve = route(from: member.from, to: member.to, offset: member.offset, bend: member.arrow.bend)
+                curves[member.arrow.id] = curve
+                lines[member.arrow.id] = Polyline(curve)
+            }
+            for members in memberGroups {
+                guard let level = members.first?.arrow.level else { continue }
+                let own = Set(members.map(\.arrow.id))
+                let others = { [lines] in
+                    memberGroups.joined().filter { $0.arrow.level == level && !own.contains($0.arrow.id) }.compactMap { lines[$0.arrow.id] }
+                }
+                guard let routed = routeAvoidingBoxes(members, facing: members.compactMap { lines[$0.arrow.id] }, layout: layout,
+                                                      others: others) else { continue }
+                for (member, line) in zip(members, routed) {
+                    curves[member.arrow.id] = line.curve
+                    lines[member.arrow.id] = line
                 }
             }
             return curves
@@ -110,6 +132,277 @@ extension MindControl {
         private static func clamp(_ offset: CGFloat, _ a: CGRect, _ b: CGRect, _ side: KeyPath<CGRect, CGFloat>) -> CGFloat {
             let limit = max(0, min(a[keyPath: side], b[keyPath: side]) / 2 - 4)
             return max(-limit, min(limit, offset))
+        }
+
+        // MARK: - Around boxes
+
+        /// One arrow of a group between the same two boxes.
+        private struct Member {
+            let arrow: MapLayout.ArrowSpec
+            let from: CGRect
+            let to: CGRect
+            let offset: CGFloat
+        }
+
+        private enum Side: CaseIterable {
+            case left, right, top, bottom
+
+            /// Pointing out of the box.
+            var normal: CGVector {
+                switch self {
+                case .left: CGVector(dx: -1, dy: 0)
+                case .right: CGVector(dx: 1, dy: 0)
+                case .top: CGVector(dx: 0, dy: -1)
+                case .bottom: CGVector(dx: 0, dy: 1)
+                }
+            }
+
+            /// Along the edge, toward +x or +y.
+            var along: CGVector { normal.dx == 0 ? CGVector(dx: 1, dy: 0) : CGVector(dx: 0, dy: 1) }
+
+            func midpoint(of r: CGRect) -> CGPoint {
+                switch self {
+                case .left: CGPoint(x: r.minX, y: r.midY)
+                case .right: CGPoint(x: r.maxX, y: r.midY)
+                case .top: CGPoint(x: r.midX, y: r.minY)
+                case .bottom: CGPoint(x: r.midX, y: r.maxY)
+                }
+            }
+
+            func length(of r: CGRect) -> CGFloat { normal.dx == 0 ? r.width : r.height }
+        }
+
+        /// Nil when the group's facing-edge curves pass over no box. Otherwise every pair of sides, each with long
+        /// and short handles, and the one crossing the fewest boxes wins. Ties go to the fewest name strips crossed
+        /// (of the boxes it runs inside), then the fewest other arrows at its level crossed or met end to end, then
+        /// the shortest. The facing edges win any tie with them, so nil again.
+        private static func routeAvoidingBoxes(_ members: [Member], facing: [Polyline], layout: MapLayout,
+                                               others: () -> [Polyline]) -> [Polyline]? {
+            guard let first = members.first, facing.count == members.count else { return nil }
+            let ends = [first.arrow.from, first.arrow.to]
+            let obstacles = obstacles(between: first.from, and: first.to, ids: ends, level: first.arrow.level, layout: layout)
+            let baseline = facing.reduce(0) { $0 + $1.entered(obstacles, upTo: .max) }
+            guard baseline > 0 else { return nil }
+
+            // Sides are chosen for the pair, so a flow and its return leave and enter by the same edges.
+            let ids = ends.sorted()
+            let one = first.arrow.from == ids[0] ? first.from : first.to
+            let two = first.arrow.from == ids[0] ? first.to : first.from
+            var fewest = baseline - 1
+            var tied: [[Polyline]] = []
+            for sideOne in Side.allCases {
+                for sideTwo in Side.allCases {
+                    for short in [false, true] {
+                        var lines: [Polyline] = []
+                        var score = 0
+                        for member in members where score <= fewest {
+                            let shifts = shifts(one, sideOne, two, sideTwo, offset: member.offset)
+                            let curve = member.arrow.from == ids[0]
+                                ? sided(from: member.from, sideOne, shift: shifts.one, to: member.to, sideTwo, shift: shifts.two,
+                                        extra: shifts.extra, short: short)
+                                : sided(from: member.from, sideTwo, shift: shifts.two, to: member.to, sideOne, shift: shifts.one,
+                                        extra: shifts.extra, short: short)
+                            let line = Polyline(bent(curve, by: member.arrow.bend))
+                            score += line.entered(obstacles, upTo: fewest - score)
+                            lines.append(line)
+                        }
+                        guard score <= fewest else { continue }
+                        if score < fewest { tied = [] }
+                        fewest = score
+                        tied.append(lines)
+                    }
+                }
+            }
+            guard tied.count > 1 else { return tied.first }
+            let strips = nameStrips(around: first.from, and: first.to, ids: ends, layout: layout)
+            let stripCounts = tied.map { $0.reduce(0) { $0 + $1.entered(strips, upTo: .max) } }
+            let fewestStrips = stripCounts.min() ?? 0
+            tied = zip(tied, stripCounts).filter { $0.1 == fewestStrips }.map(\.0)
+            guard tied.count > 1 else { return tied.first }
+            let placed = others()
+            var best: (lines: [Polyline], meets: Int, length: CGFloat)?
+            for lines in tied {
+                let meets = lines.reduce(0) { total, line in
+                    total + placed.reduce(0) { $0 + (line.sharesAnEnd(with: $1) || line.crosses($1) ? 1 : 0) }
+                }
+                let length = lines.reduce(0) { $0 + $1.length }
+                if let current = best, meets > current.meets || meets == current.meets && length >= current.length - 0.5 { continue }
+                best = (lines, meets, length)
+            }
+            return best?.lines
+        }
+
+        /// The strips holding the names of the boxes the arrow runs inside: a system's header, a zone's label.
+        private static func nameStrips(around a: CGRect, and b: CGRect, ids: [String], layout: MapLayout) -> [Area] {
+            layout.boxes.compactMap { box -> Area? in
+                guard !ids.contains(box.id), box.rect.contains(a) || box.rect.contains(b) else { return nil }
+                let r = box.rect
+                switch box.kind {
+                case .zone: return Area(CGRect(x: r.minX, y: r.minY, width: r.width, height: min(r.height, LayoutMetrics.zoneLabel)))
+                case .system: return Area(CGRect(x: r.minX, y: r.minY, width: r.width, height: min(r.height, LayoutMetrics.header)))
+                case .part: return nil
+                }
+            }
+        }
+
+        /// The boxes an arrow at `level` must not pass over: those drawn at that level, other than the two it
+        /// joins and any box holding either (a part's system, a system's zone). Its own two boxes count too,
+        /// slightly shrunk so leaving an edge isn't a crossing, unless one holds the other.
+        private static func obstacles(between a: CGRect, and b: CGRect, ids: [String], level: MapLayout.ArrowLevel,
+                                      layout: MapLayout) -> [Area] {
+            let shown: Set<MapLayout.BoxKind>
+            switch layout.fixedLevel ? .part : level {
+            case .zone: shown = [.zone]
+            case .system: shown = [.zone, .system]
+            case .part: shown = [.zone, .system, .part]
+            }
+            var out = layout.boxes.filter { box in
+                shown.contains(box.kind) && !ids.contains(box.id) && !box.rect.contains(a) && !box.rect.contains(b)
+            }.map { $0.rect.insetBy(dx: 1, dy: 1) }
+            if !a.contains(b), !b.contains(a) { out += [a.insetBy(dx: 2, dy: 2), b.insetBy(dx: 2, dy: 2)] }
+            return out.filter { !$0.isNull && !$0.isEmpty }.map(Area.init)
+        }
+
+        /// How far each end slides along its edge for a parallel arrow, in the pair's own terms so an arrow
+        /// and its return slide apart. Brackets (both ends on the same side) nest instead: the end points move
+        /// apart and the bulge grows by `extra`.
+        private static func shifts(_ one: CGRect, _ sideOne: Side, _ two: CGRect, _ sideTwo: Side,
+                                   offset: CGFloat) -> (one: CGFloat, two: CGFloat, extra: CGFloat) {
+            if sideOne == sideTwo {
+                let along = sideOne.along
+                let a = sideOne.midpoint(of: one), b = sideTwo.midpoint(of: two)
+                let apart: CGFloat = (b.x - a.x) * along.dx + (b.y - a.y) * along.dy >= 0 ? 1 : -1
+                return (-offset * apart, offset * apart, offset)
+            }
+            let travel = CGVector(dx: sideOne.normal.dx - sideTwo.normal.dx, dy: sideOne.normal.dy - sideTwo.normal.dy)
+            let across = CGVector(dx: -travel.dy, dy: travel.dx)
+            func sign(_ v: CGVector) -> CGFloat { across.dx * v.dx + across.dy * v.dy < 0 ? -1 : 1 }
+            return (offset * sign(sideOne.along), offset * sign(sideTwo.along), 0)
+        }
+
+        /// A curve out of `exit` of `a` and into `entry` of `b`, each end slid along its edge (kept 4 pt from the
+        /// corners). Its handles point straight out of each edge, 40 pt when `short`; a bracket's reach past the
+        /// farther box.
+        private static func sided(from a: CGRect, _ exit: Side, shift: CGFloat, to b: CGRect, _ entry: Side, shift endShift: CGFloat,
+                                  extra: CGFloat, short: Bool) -> Curve {
+            func end(_ r: CGRect, _ side: Side, _ shift: CGFloat) -> CGPoint {
+                let limit = max(0, side.length(of: r) / 2 - 4)
+                let slide = max(-limit, min(limit, shift))
+                let mid = side.midpoint(of: r)
+                return CGPoint(x: mid.x + side.along.dx * slide, y: mid.y + side.along.dy * slide)
+            }
+            let start = end(a, exit, shift), finish = end(b, entry, endShift)
+            let distance = hypot(finish.x - start.x, finish.y - start.y)
+            var kStart: CGFloat, kEnd: CGFloat
+            if exit == entry {
+                let n = exit.normal
+                let base = (short ? 40 : max(40, distance * 0.25)) + extra
+                kStart = base + max(0, (finish.x - start.x) * n.dx + (finish.y - start.y) * n.dy)
+                kEnd = base + max(0, (start.x - finish.x) * n.dx + (start.y - finish.y) * n.dy)
+            } else {
+                kStart = short ? 40 : max(40, distance * 0.45)
+                kEnd = kStart
+            }
+            kStart = max(10, kStart)
+            kEnd = max(10, kEnd)
+            return Curve(p0: start, p1: CGPoint(x: start.x + exit.normal.dx * kStart, y: start.y + exit.normal.dy * kStart),
+                         p2: CGPoint(x: finish.x + entry.normal.dx * kEnd, y: finish.y + entry.normal.dy * kEnd), p3: finish)
+        }
+    }
+}
+
+extension MindControl.ArrowRouter {
+    /// A rect as its edges, quick to test against.
+    fileprivate struct Area {
+        let minX, minY, maxX, maxY: CGFloat
+
+        init(minX: CGFloat, minY: CGFloat, maxX: CGFloat, maxY: CGFloat) {
+            self.minX = minX
+            self.minY = minY
+            self.maxX = maxX
+            self.maxY = maxY
+        }
+
+        init(_ r: CGRect) { self.init(minX: r.minX, minY: r.minY, maxX: r.maxX, maxY: r.maxY) }
+    }
+
+    /// A curve sampled at 16 segments, with the box around the samples.
+    fileprivate struct Polyline {
+        let curve: MindControl.Curve
+        let points: [CGPoint]
+        let bounds: Area
+
+        init(_ curve: MindControl.Curve) {
+            self.curve = curve
+            var points: [CGPoint] = []
+            points.reserveCapacity(17)
+            var minX = CGFloat.greatestFiniteMagnitude, minY = minX, maxX = -minX, maxY = -minX
+            for i in 0...16 {
+                let p = curve.point(at: CGFloat(i) / 16)
+                points.append(p)
+                minX = min(minX, p.x); maxX = max(maxX, p.x)
+                minY = min(minY, p.y); maxY = max(maxY, p.y)
+            }
+            self.points = points
+            bounds = Area(minX: minX, minY: minY, maxX: maxX, maxY: maxY)
+        }
+
+        var length: CGFloat {
+            var total: CGFloat = 0
+            for i in 1..<points.count { total += hypot(points[i].x - points[i - 1].x, points[i].y - points[i - 1].y) }
+            return total
+        }
+
+        /// How many of `boxes` the line passes inside, counting no further than `limit` + 1.
+        func entered(_ boxes: [Area], upTo limit: Int) -> Int {
+            var count = 0
+            for box in boxes where count <= limit && enters(box) { count += 1 }
+            return count
+        }
+
+        func enters(_ r: Area) -> Bool {
+            guard bounds.maxX > r.minX, bounds.minX < r.maxX, bounds.maxY > r.minY, bounds.minY < r.maxY else { return false }
+            for i in 1..<points.count where Self.segment(points[i - 1], points[i], hits: r) { return true }
+            return false
+        }
+
+        /// Whether the two lines cross. Lines that only touch don't.
+        func crosses(_ other: Polyline) -> Bool {
+            guard bounds.maxX >= other.bounds.minX, bounds.minX <= other.bounds.maxX,
+                  bounds.maxY >= other.bounds.minY, bounds.minY <= other.bounds.maxY else { return false }
+            func side(_ a: CGPoint, _ b: CGPoint, _ c: CGPoint) -> CGFloat { (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x) }
+            let theirs = other.bounds
+            for i in 1..<points.count {
+                let a = points[i - 1], b = points[i]
+                if max(a.x, b.x) < theirs.minX || min(a.x, b.x) > theirs.maxX
+                    || max(a.y, b.y) < theirs.minY || min(a.y, b.y) > theirs.maxY { continue }
+                for j in 1..<other.points.count {
+                    let c = other.points[j - 1], d = other.points[j]
+                    if max(c.x, d.x) < min(a.x, b.x) || min(c.x, d.x) > max(a.x, b.x)
+                        || max(c.y, d.y) < min(a.y, b.y) || min(c.y, d.y) > max(a.y, b.y) { continue }
+                    if side(a, b, c) * side(a, b, d) < 0, side(c, d, a) * side(c, d, b) < 0 { return true }
+                }
+            }
+            return false
+        }
+
+        /// Whether an end lands within 12 pt of an end of `other`, where their arrowheads would mix.
+        func sharesAnEnd(with other: Polyline) -> Bool {
+            let mine = [curve.p0, curve.p3], theirs = [other.curve.p0, other.curve.p3]
+            return mine.contains { a in theirs.contains { b in hypot(a.x - b.x, a.y - b.y) < 12 } }
+        }
+
+        /// Liang–Barsky: whether the segment from `p` to `q` enters the rect's interior.
+        private static func segment(_ p: CGPoint, _ q: CGPoint, hits r: Area) -> Bool {
+            let dx = q.x - p.x, dy = q.y - p.y
+            var low: CGFloat = 0, high: CGFloat = 1
+            func clip(_ edge: CGFloat, _ delta: CGFloat) -> Bool {
+                if delta == 0 { return edge > 0 }
+                let t = edge / delta
+                if delta < 0 { low = max(low, t) } else { high = min(high, t) }
+                return low < high
+            }
+            return clip(p.x - r.minX, -dx) && clip(r.maxX - p.x, dx) && clip(p.y - r.minY, -dy) && clip(r.maxY - p.y, dy)
         }
     }
 }

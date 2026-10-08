@@ -86,5 +86,113 @@ struct ArrowRouterTests {
         #expect(curve.p0 == plain.p0 && curve.p3 == plain.p3)
         #expect(curve.mid.y < plain.mid.y)
     }
+
+    // MARK: - Around boxes
+
+    private func box(_ id: String, _ kind: MapLayout.BoxKind, _ rect: CGRect) -> MapLayout.Box {
+        MapLayout.Box(id: id, kind: kind, rect: rect, title: id, subtitle: nil, external: false, tint: -1, partCount: 0)
+    }
+
+    private func arrow(_ id: String, _ from: String, _ to: String, level: MapLayout.ArrowLevel) -> MapLayout.ArrowSpec {
+        MapLayout.ArrowSpec(id: id, level: level, from: from, to: to, kind: .data, flowIDs: [id], label: id, conditional: false, weight: 1)
+    }
+
+    /// Boxes the curve passes inside, sampled finely; edges don't count.
+    private func crossed(_ curve: MindControl.Curve, _ boxes: [MapLayout.Box]) -> [String] {
+        boxes.filter { box in
+            let inner = box.rect.insetBy(dx: 1, dy: 1)
+            return (0...400).contains { inner.contains(curve.point(at: CGFloat($0) / 400)) }
+        }.map(\.id)
+    }
+
+    @Test func stackedBoxesRouteAroundABoxBetweenThem() throws {
+        let a = box("a", CGRect(x: 0, y: 0, width: 220, height: 84))
+        let middle = box("middle", CGRect(x: 0, y: 134, width: 220, height: 84))
+        let b = box("b", CGRect(x: 0, y: 268, width: 220, height: 84))
+        let layout = MapLayout(boxes: [a, middle, b], arrows: [arrow("down", "a", "b"), arrow("up", "b", "a")])
+        let curves = ArrowRouter.curves(for: layout)
+        for id in ["down", "up"] {
+            let curve = try #require(curves[id])
+            #expect(crossed(curve, [a, middle, b]).isEmpty, "\(id) crosses \(crossed(curve, [a, middle, b]))")
+        }
+        let down = try #require(curves["down"]), up = try #require(curves["up"])
+        // Each end sits on its box's edge.
+        #expect(a.rect.insetBy(dx: -0.01, dy: -0.01).contains(down.p0) && !a.rect.insetBy(dx: 0.01, dy: 0.01).contains(down.p0))
+        #expect(b.rect.insetBy(dx: -0.01, dy: -0.01).contains(down.p3) && !b.rect.insetBy(dx: 0.01, dy: 0.01).contains(down.p3))
+        // The flow and its return still keep apart.
+        #expect(hypot(down.mid.x - up.mid.x, down.mid.y - up.mid.y) >= 8)
+    }
+
+    @Test func aPartsArrowToAnotherSystemGoesAroundItsSiblingPart() throws {
+        let zone = box("zone:z", .zone, CGRect(x: -48, y: -104, width: 1000, height: 400))
+        let system = box("s", .system, CGRect(x: 0, y: 0, width: 420, height: 124))
+        let first = box("s.first", .part, CGRect(x: 20, y: 64, width: 160, height: 40))
+        let sibling = box("s.sibling", .part, CGRect(x: 220, y: 64, width: 160, height: 40))
+        let other = box("t", .system, CGRect(x: 600, y: 20, width: 220, height: 84))
+        let boxes = [zone, system, first, sibling, other]
+        let layout = MapLayout(boxes: boxes, arrows: [arrow("f", "s.first", "t", level: .part), arrow("g", "s.first", "t", level: .part)])
+        let curves = ArrowRouter.curves(for: layout)
+        for id in ["f", "g"] {
+            let curve = try #require(curves[id])
+            #expect(!crossed(curve, [sibling, other, first]).contains("s.sibling"), "\(id) crosses the sibling part")
+            #expect(crossed(curve, [sibling, other, first]).isEmpty)
+        }
+    }
+
+    @Test func partsArrowsIgnoreHiddenBoxesAtTheSystemLevel() throws {
+        // At the system level parts are hidden, so a system arrow passing over another system's part area is
+        // fine as long as it misses the systems.
+        let a = box("a", .system, CGRect(x: 0, y: 0, width: 220, height: 84))
+        let b = box("b", .system, CGRect(x: 400, y: 0, width: 220, height: 84))
+        let hiddenPart = box("c.p", .part, CGRect(x: 250, y: 20, width: 100, height: 40))
+        let layout = MapLayout(boxes: [a, b, hiddenPart], arrows: [arrow("f", "a", "b", level: .system)])
+        let curve = try #require(ArrowRouter.curves(for: layout)["f"])
+        #expect(curve == ArrowRouter.route(from: a.rect, to: b.rect, offset: 0))
+    }
+
+    @Test func unobstructedArrowsKeepTheirFacingCurves() throws {
+        // The same numbers the router gave before it learned to avoid boxes.
+        let boxes = [box("a", left), box("b", right), box("c", CGRect(x: 20, y: 200, width: 100, height: 60))]
+        var bent = arrow("bent", "a", "c")
+        bent.bend = 30
+        let layout = MapLayout(boxes: boxes, arrows: [arrow("go", "a", "b"), arrow("back", "b", "a"), bent])
+        let curves = ArrowRouter.curves(for: layout)
+        #expect(curves["go"] == MindControl.Curve(p0: CGPoint(x: 100, y: 23), p1: CGPoint(x: 190, y: 23),
+                                                  p2: CGPoint(x: 210, y: 23), p3: CGPoint(x: 300, y: 23)))
+        #expect(curves["back"] == MindControl.Curve(p0: CGPoint(x: 300, y: 37), p1: CGPoint(x: 210, y: 37),
+                                                    p2: CGPoint(x: 190, y: 37), p3: CGPoint(x: 100, y: 37)))
+        let plain = MindControl.Curve(p0: CGPoint(x: 50, y: 60), p1: CGPoint(x: 50, y: 123),
+                                      p2: CGPoint(x: 70, y: 137), p3: CGPoint(x: 70, y: 200))
+        #expect(curves["bent"] == ArrowRouter.route(from: left, to: CGRect(x: 20, y: 200, width: 100, height: 60), offset: 0, bend: 30))
+        #expect(ArrowRouter.route(from: left, to: CGRect(x: 20, y: 200, width: 100, height: 60), offset: 0) == plain)
+    }
+
+    @Test func theArcaMapsArrowsMissEveryBoxTheyDoNotStartOrEndIn() throws {
+        let map = FlowFixtures.arca
+        let main = MindControl.FlowLayout.layout(map: map, broken: [])
+        let layouts = [("main", main),
+                       ("system", try #require(MindControl.FocusLayout.system("audio", map: map, broken: []))),
+                       ("feature", try #require(MindControl.FocusLayout.feature("speech", map: map, broken: [])))]
+        for (name, layout) in layouts {
+            let curves = ArrowRouter.curves(for: layout)
+            for arrow in layout.arrows {
+                let curve = try #require(curves[arrow.id])
+                guard let from = layout.box(arrow.from)?.rect, let to = layout.box(arrow.to)?.rect else { continue }
+                let byLevel: [MapLayout.ArrowLevel: Set<MapLayout.BoxKind>] = [.zone: [.zone], .system: [.zone, .system],
+                                                                                 .part: [.zone, .system, .part]]
+                let shown: Set<MapLayout.BoxKind> = layout.fixedLevel ? [.zone, .system, .part] : byLevel[arrow.level] ?? []
+                let obstacles = layout.boxes.filter { box in
+                    shown.contains(box.kind) && box.id != arrow.from && box.id != arrow.to
+                        && !box.rect.contains(from) && !box.rect.contains(to)
+                }
+                #expect(crossed(curve, obstacles).isEmpty, "\(name) \(arrow.id) crosses \(crossed(curve, obstacles))")
+            }
+        }
+    }
+
+    @Test func routingIsDeterministic() {
+        let layout = MindControl.FlowLayout.layout(map: FlowFixtures.arca, broken: [])
+        #expect(ArrowRouter.curves(for: layout) == ArrowRouter.curves(for: layout))
+    }
 }
 #endif
