@@ -112,6 +112,16 @@ struct RendererTests {
         #expect(!renderer.isAnimatingCamera)
     }
 
+    @Test func cancellingACameraAnimationLeavesTheCameraWhereItIs() throws {
+        let renderer = try Renderer()
+        let start = renderer.camera
+        renderer.animateCamera(to: MindControl.PanZoomCamera(center: CGPoint(x: 300, y: 0), zoom: 2), duration: 0.5)
+        renderer.cancelCameraAnimation()
+        #expect(!renderer.isAnimatingCamera)
+        renderer.advanceCamera(to: CACurrentMediaTime() + 1)
+        #expect(renderer.camera == start)
+    }
+
     @Test(arguments: [0, -1, CFTimeInterval.nan])
     func cameraAnimationWithNoLengthJumpsToItsTarget(duration: CFTimeInterval) throws {
         // Otherwise a negative or NaN duration never finishes and pins the camera to where it started.

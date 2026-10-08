@@ -75,6 +75,10 @@ extension MindControl {
 
         var isAnimatingCamera: Bool { cameraAnimation != nil }
 
+        /// Stops a running camera animation where the camera is now. User input wins over a programmatic move;
+        /// otherwise the animation overwrites the input on the next frame.
+        func cancelCameraAnimation() { cameraAnimation = nil }
+
         func animateCamera(to target: PanZoomCamera, duration: CFTimeInterval = 0.45) {
             // Anything but a positive finite duration jumps: a negative, NaN or infinite one would never finish,
             // pinning the camera where it started.

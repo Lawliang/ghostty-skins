@@ -1,0 +1,403 @@
+#if os(macOS)
+import CoreGraphics
+import Foundation
+import QuartzCore
+import Testing
+@testable import Ghostty
+
+private typealias MapController = MindControl.MapController
+
+@MainActor
+struct MapControllerTests {
+    private func loaded(generation: Int = 1) -> MindControl.Model.Loaded {
+        let files = FlowFixtures.arcaSources
+        let snapshot = MindControl.FlowSnapshot(root: URL(fileURLWithPath: "/tmp/mc-ctl"), flowData: nil, layoutData: nil,
+                                                sourceFiles: files.keys.sorted(), read: { files[$0] })
+        return .init(map: FlowFixtures.arca, report: MindControl.FlowCheck.run(map: FlowFixtures.arca, snapshot: snapshot),
+                     saved: [:], generation: generation)
+    }
+
+    private func controller(root: URL = URL(fileURLWithPath: "/tmp/mc-ctl")) -> MapController {
+        let controller = MapController()
+        controller.viewSize = CGSize(width: 1200, height: 800)
+        controller.show(loaded(), root: root)
+        return controller
+    }
+
+    @Test func showLaysOutAndFitsTheMap() {
+        let c = controller()
+        #expect(c.layout == c.baseLayout)
+        #expect(c.baseLayout.box("audio") != nil)
+        let topLeft = c.camera.toScreen(c.layout.bounds.origin, viewSize: c.viewSize)
+        let bottomRight = c.camera.toScreen(CGPoint(x: c.layout.bounds.maxX, y: c.layout.bounds.maxY), viewSize: c.viewSize)
+        #expect(topLeft.x >= 0 && topLeft.y >= 0 && bottomRight.x <= 1200 && bottomRight.y <= 800)
+    }
+
+    @Test func selectingAFeatureLightsItAndListsItsSteps() {
+        let c = controller()
+        c.selectFeature("speech")
+        #expect(c.style.litFlows.count == 9)
+        guard case .feature(let name, let groups, let unknown) = c.sidePanel else { Issue.record("\(c.sidePanel)"); return }
+        #expect(name == "A press becomes speech")
+        #expect(groups.count == 4)
+        #expect(unknown.isEmpty)
+        c.selectFeature("speech")
+        #expect(c.selectedFeature == nil)
+    }
+
+    @Test func escapeUnwindsSearchThenFocusThenSelection() {
+        let c = controller()
+        c.selectFeature("speech")
+        c.enterFocus(.system("audio"))
+        c.query = "aud"
+        #expect(c.escape())
+        #expect(c.query.isEmpty)
+        #expect(c.escape())
+        #expect(c.focus == nil)
+        #expect(c.escape())
+        #expect(c.selectedFeature == nil)
+        #expect(!c.escape())
+    }
+
+    @Test func focusSwapsTheLayoutAndBack() {
+        let c = controller()
+        c.enterFocus(.system("audio"))
+        #expect(c.layout.fixedLevel)
+        #expect(c.layout.box("ble") == nil)
+        #expect(c.breadcrumb == ["mc-ctl", "Audio"])
+        c.exitFocus()
+        #expect(c.layout == c.baseLayout)
+    }
+
+    @Test func blendSlidesSharedBoxesAndFadesTheRest() throws {
+        let c = controller()
+        let focus = try #require(MindControl.FocusLayout.system("audio", map: FlowFixtures.arca, broken: []))
+        let (mid, fade) = MapController.blend(from: c.baseLayout, to: focus, t: 0.5)
+        let a = try #require(c.baseLayout.box("audio")).rect, b = try #require(focus.box("audio")).rect
+        #expect(abs(try #require(mid.box("audio")).rect.minX - (a.minX + b.minX) / 2) < 1e-9)
+        #expect(fade["ble"] == 0.5)
+        #expect(fade["audio"] == nil)
+    }
+
+    @Test func draggingASystemSavesItsPosition() throws {
+        let project = try TempProject()
+        let c = controller(root: project.url)
+        let before = try #require(c.baseLayout.box("audio")).rect
+        c.drag(system: "audio", byScreen: CGSize(width: 100, height: 0))
+        let after = try #require(c.baseLayout.box("audio")).rect
+        #expect(abs(after.minX - (before.minX + 100 / c.camera.zoom)) < 1e-6)
+        c.endDrag("audio")
+        let data = try Data(contentsOf: project.url.appendingPathComponent(".mindcontrol/layout.json"))
+        #expect(MindControl.LayoutStore.decode(data)["audio"] == after.origin)
+    }
+
+    @Test func onlySystemsOnTheMainMapCanBeDragged() {
+        let c = controller()
+        #expect(c.canDrag("audio"))
+        #expect(!c.canDrag("audio.gate"))
+        #expect(!c.canDrag("zone:phone"))
+        c.enterFocus(.system("audio"))
+        #expect(!c.canDrag("audio"))
+    }
+
+    @Test func searchingAFileWithNoSystemOpensHealth() {
+        let c = controller()
+        c.navigate(to: MindControl.SearchResult(kind: .file, title: "Stray.swift", detail: "", target: .file(path: "x/Stray.swift", system: nil)))
+        #expect(c.mode == .health)
+        if case .health = c.sidePanel {} else { Issue.record("\(c.sidePanel)") }
+    }
+
+    @Test func searchingASystemSelectsIt() {
+        let c = controller()
+        c.navigate(to: MindControl.SearchResult(kind: .system, title: "Audio", detail: "", target: .system("audio")))
+        #expect(c.selection == .box("audio"))
+        #expect(c.style.pulsed == "audio")
+        guard case .system(let name, _, let incoming, let outgoing, let files) = c.sidePanel else { Issue.record("\(c.sidePanel)"); return }
+        #expect(name == "Audio")
+        #expect(incoming.map(\.id) == ["begin"])
+        #expect(Set(outgoing.map(\.id)) == ["pcm", "commit", "discard"])
+        #expect(files == ["app/Sources/Audio/AudioCapture.swift", "app/Sources/Audio/SpeechGate.swift"])
+    }
+
+    @Test func doubleClickingAnArrowOpensItsHandOff() throws {
+        let c = controller()
+        var opened: (URL, Int?)?
+        c.openFile = { opened = ($0, $1) }
+        let mid = try #require(c.curves["flow:pcm"]).mid
+        c.camera = MindControl.PanZoomCamera(center: mid, zoom: 1.5)
+        c.doubleClick(at: c.camera.toScreen(mid, viewSize: c.viewSize))
+        #expect(opened?.0.path.hasSuffix("app/Sources/Audio/AudioCapture.swift") == true)
+        #expect(opened?.1 == 4)
+    }
+
+    @Test func clickingAHealthIssueGoesToItsSubject() {
+        let c = controller()
+        c.mode = .health
+        c.goToIssue(.init(kind: .staleAnchor, subject: "audio.gate", message: "SpeechGate: type missing"))
+        #expect(c.selection == .box("audio.gate"))
+        c.goToIssue(.init(kind: .staleVia, subject: "pcm", message: "pcm: sendAudio missing"))
+        #expect(c.selection == .arrow("flow:pcm"))
+    }
+
+    @Test func reloadKeepsFocusAndDropsVanishedSelection() {
+        let c = controller()
+        c.enterFocus(.system("audio"))
+        c.click(at: .zero)
+        c.show(loaded(generation: 2), root: URL(fileURLWithPath: "/tmp/mc-ctl"))
+        #expect(c.focus == .system("audio"))
+        #expect(c.layout.fixedLevel)
+    }
+
+    // MARK: Beyond the brief
+
+    /// Ids are unique only within their own list: here a flow, a system and a feature share names.
+    private static let clashJSON = """
+    {
+      "version": 1,
+      "systems": [
+        { "id": "src", "name": "Source", "paths": ["src/**"] },
+        { "id": "relay", "name": "Relay", "paths": ["relay/**"] },
+        { "id": "dst", "name": "Sink", "paths": ["dst/**"] }
+      ],
+      "flows": [
+        { "id": "relay", "from": "src", "to": "dst", "kind": "data", "carries": "bytes" },
+        { "id": "dup", "from": "src", "to": "relay", "kind": "data", "carries": "more", "via": "push" },
+        { "id": "lost", "from": "src", "to": "missing", "kind": "data", "carries": "nothing", "via": "push" }
+      ],
+      "features": [
+        { "id": "dup", "name": "Dup", "route": ["dup", "nope"] },
+        { "id": "ghost", "name": "Ghost", "route": ["nope"] }
+      ]
+    }
+    """
+
+    private func loaded(_ map: MindControl.FlowMap, files: [String: String] = [:], generation: Int = 1) -> MindControl.Model.Loaded {
+        let snapshot = MindControl.FlowSnapshot(root: URL(fileURLWithPath: "/tmp/mc-ctl"), flowData: nil, layoutData: nil,
+                                                sourceFiles: files.keys.sorted(), read: { files[$0] })
+        return .init(map: map, report: MindControl.FlowCheck.run(map: map, snapshot: snapshot), saved: [:], generation: generation)
+    }
+
+    private func controller(showing map: MindControl.FlowMap) -> MapController {
+        let controller = MapController()
+        controller.viewSize = CGSize(width: 1200, height: 800)
+        controller.show(loaded(map), root: URL(fileURLWithPath: "/tmp/mc-ctl"))
+        return controller
+    }
+
+    @Test func anIssueAboutAFlowGoesToTheFlowEvenWhenASystemSharesItsID() {
+        let c = controller(showing: FlowFixtures.map(Self.clashJSON))
+        #expect(c.report.issues.contains { $0.kind == .unverified && $0.subject == "relay" })
+        c.goToIssue(.init(kind: .unverified, subject: "relay", message: ""))
+        #expect(c.selection == .arrow("flow:relay"))
+        c.goToIssue(.init(kind: .density, subject: "relay", message: ""))
+        #expect(c.selection == .box("relay"))
+    }
+
+    @Test func anUnknownReferenceGoesToTheFeatureUnlessItsFlowIsTheBrokenOne() {
+        let c = controller(showing: FlowFixtures.map(Self.clashJSON))
+        // Flow `dup` is fine; feature `dup` names an unknown flow.
+        c.goToIssue(.init(kind: .unknownReference, subject: "dup", message: ""))
+        #expect(c.selectedFeature == "dup")
+        #expect(c.selection == nil)
+        // Flow `lost` is broken and not drawn: go to the end that exists.
+        c.goToIssue(.init(kind: .unknownReference, subject: "lost", message: ""))
+        #expect(c.selection == .box("src"))
+    }
+
+    @Test func aPathTieOpensTheFileAndMapDensityFitsTheMap() {
+        let c = controller()
+        var opened: URL?
+        c.openFile = { url, _ in opened = url }
+        c.goToIssue(.init(kind: .pathTie, subject: "app/Sources/Tie.swift", message: ""))
+        #expect(opened?.path.hasSuffix("/tmp/mc-ctl/app/Sources/Tie.swift") == true)
+        c.pan(by: CGSize(width: 300, height: 120))
+        c.goToIssue(.init(kind: .density, subject: "map", message: ""))
+        #expect(c.camera == MindControl.PanZoomCamera.fitting(c.baseLayout.bounds, in: c.viewSize))
+    }
+
+    @Test func goingToAnIssueLeavesFocus() {
+        let c = controller()
+        c.enterFocus(.system("agent"))
+        c.goToIssue(.init(kind: .staleAnchor, subject: "audio.gate", message: ""))
+        #expect(c.focus == nil)
+        #expect(c.layout == c.baseLayout)
+        #expect(c.selection == .box("audio.gate"))
+    }
+
+    @Test func aStepOutsideTheFocusLeavesFocusForTheMap() {
+        let c = controller()
+        c.enterFocus(.system("ble"))
+        c.goToStep("send")
+        #expect(c.focus == nil)
+        #expect(c.selection == .arrow("flow:send"))
+        c.enterFocus(.feature("speech"))
+        c.goToStep("pcm")
+        #expect(c.focus == .feature("speech"))
+        #expect(c.selection == .arrow("flow:pcm"))
+    }
+
+    @Test func goingToAHiddenControlStepShowsControlArrows() {
+        let c = controller()
+        c.showControl = false
+        c.goToStep("press")
+        #expect(c.showControl)
+        #expect(c.selection == .arrow("flow:press"))
+    }
+
+    @Test func searchWaitsForTypingToPauseAndRunsOnce() async {
+        let c = controller()
+        c.searchDelay = 30_000_000
+        c.query = "a"
+        c.query = "au"
+        c.query = "aud"
+        // Not searched on the keystroke.
+        #expect(c.results.isEmpty)
+        await c.searchSettled()
+        #expect(c.results == MindControl.FlowSearch(map: c.map!, report: c.report).search("aud"))
+        #expect(c.results.first?.target == .system("audio"))
+        c.query = ""
+        #expect(c.results.isEmpty)
+    }
+
+    @Test func flushingSearchesNowOnceTheIndexIsBuilt() async {
+        let c = controller()
+        await c.searchSettled()
+        c.query = "ble"
+        c.flushSearch()
+        #expect(c.results.first?.target == .system("ble"))
+    }
+
+    @Test func aReloadReRunsTheQueryAgainstTheNewMap() async {
+        let c = controller()
+        c.query = "keeper"
+        await c.searchSettled()
+        #expect(c.results.isEmpty)
+        let renamed = FlowFixtures.map(FlowFixtures.arcaJSON.replacingOccurrences(of: "\"name\": \"SpeechGate\"", with: "\"name\": \"Keeper\""))
+        c.show(loaded(renamed, files: FlowFixtures.arcaSources, generation: 2), root: URL(fileURLWithPath: "/tmp/mc-ctl"))
+        await c.searchSettled()
+        #expect(c.results.first?.target == .part("audio.gate"))
+    }
+
+    @Test func userInputStopsACameraAnimation() throws {
+        let renderer = try MindControl.Renderer()
+        let c = controller()
+        c.attach(renderer)
+        let start = c.camera
+        let viewCentre = CGPoint(x: 600, y: 400)
+        for input in [{ c.pan(by: CGSize(width: 40, height: 0)) }, { c.zoom(by: 1.2, about: viewCentre) },
+                      { c.drag(system: "audio", byScreen: CGSize(width: 10, height: 0)) }] {
+            c.camera = start
+            c.navigate(to: MindControl.SearchResult(kind: .system, title: "Agent", detail: "", target: .system("agent")))
+            #expect(renderer.isAnimatingCamera)
+            input()
+            #expect(!renderer.isAnimatingCamera)
+            let after = c.camera
+            renderer.advanceCamera(to: CACurrentMediaTime() + 10)
+            #expect(c.camera == after)
+        }
+    }
+
+    @Test func idleFramesLeaveTheSceneAlone() throws {
+        let renderer = try MindControl.Renderer()
+        let c = controller()
+        c.attach(renderer)
+        let now = CACurrentMediaTime()
+        let built = c.sceneVersion
+        c.tick(now)
+        c.tick(now + 0.016)
+        #expect(c.sceneVersion == built)
+
+        c.enterFocus(.system("audio"))
+        c.tick(now + 0.1)
+        #expect(c.sceneVersion > built)
+        #expect(c.layout != c.baseLayout && !c.layout.boxes.isEmpty)
+        c.tick(now + 5)
+        #expect(c.layout == MindControl.FocusLayout.system("audio", map: FlowFixtures.arca, broken: c.report.brokenFlows))
+        let settled = c.sceneVersion
+        c.tick(now + 5.016)
+        c.tick(now + 5.032)
+        #expect(c.sceneVersion == settled)
+    }
+
+    @Test func labelsArePlannedOnlyWhenSomethingMoved() {
+        let c = controller()
+        let first = c.labels()
+        let planned = c.labelPlans
+        #expect(c.labels() == first)
+        #expect(c.labelPlans == planned)
+        c.pan(by: CGSize(width: 10, height: 0))
+        _ = c.labels()
+        #expect(c.labelPlans == planned + 1)
+    }
+
+    @Test func anEmptyMapNeverMovesTheCameraToNaN() {
+        let c = controller(showing: MindControl.FlowMap(zones: [], systems: [], flows: [], features: []))
+        c.fit(animated: false)
+        c.fit(animated: true)
+        #expect(c.camera.center.x.isFinite && c.camera.center.y.isFinite && c.camera.zoom.isFinite)
+        let before = c.camera
+        c.enterFocus(.system("nothing"))
+        c.enterFocus(.feature("nothing"))
+        #expect(c.focus == nil)
+        #expect(c.camera == before)
+    }
+
+    @Test func focusingAFeatureWithNothingToDrawDoesNothing() {
+        let c = controller(showing: FlowFixtures.map(Self.clashJSON))
+        c.selectFeature("ghost")
+        let before = c.camera
+        c.enterFocus()
+        #expect(c.focus == nil)
+        #expect(c.focusTarget == nil)
+        #expect(c.layout == c.baseLayout)
+        #expect(c.camera == before)
+    }
+
+    @Test func aRootWithATrailingSlashIsTheSameProject() {
+        let c = controller()
+        c.pan(by: CGSize(width: 200, height: 0))
+        let panned = c.camera
+        c.show(loaded(), root: URL(fileURLWithPath: "/tmp/mc-ctl/", isDirectory: true))
+        #expect(c.camera == panned)
+    }
+
+    @Test func anotherProjectStartsClean() {
+        let c = controller()
+        c.navigate(to: MindControl.SearchResult(kind: .part, title: "SpeechGate", detail: "", target: .part("audio.gate")))
+        c.selectFeature("speech")
+        c.enterFocus(.system("audio"))
+        #expect(c.focus != nil)
+        c.show(loaded(), root: URL(fileURLWithPath: "/tmp/mc-other"))
+        #expect(c.focus == nil)
+        #expect(c.selection == nil)
+        #expect(c.selectedFeature == nil)
+        #expect(c.layout == c.baseLayout)
+    }
+
+    @Test func aReloadDropsASelectionThatVanished() {
+        let c = controller()
+        c.navigate(to: MindControl.SearchResult(kind: .part, title: "SpeechGate", detail: "", target: .part("audio.gate")))
+        #expect(c.selection == .box("audio.gate"))
+        let renamed = FlowFixtures.map(FlowFixtures.arcaJSON.replacingOccurrences(of: "\"id\": \"gate\"", with: "\"id\": \"keeper\""))
+        c.show(loaded(renamed, files: FlowFixtures.arcaSources, generation: 2), root: URL(fileURLWithPath: "/tmp/mc-ctl"))
+        #expect(c.selection == nil)
+    }
+
+    @Test func choosingAFeatureShowsItsStepsOverASelectedBox() {
+        let c = controller()
+        c.navigate(to: MindControl.SearchResult(kind: .system, title: "Audio", detail: "", target: .system("audio")))
+        c.selectFeature("speech")
+        if case .feature = c.sidePanel {} else { Issue.record("\(c.sidePanel)") }
+    }
+
+    @Test func fTargetsTheSelectedSystemThenTheFeature() {
+        let c = controller()
+        #expect(c.focusTarget == nil)
+        c.selectFeature("speech")
+        #expect(c.focusTarget == .feature("speech"))
+        c.click(at: c.camera.toScreen(CGPoint(x: c.baseLayout.box("tap")!.rect.midX, y: c.baseLayout.box("tap")!.rect.midY), viewSize: c.viewSize))
+        #expect(c.selection == .box("tap"))
+        #expect(c.focusTarget == .system("tap"))
+    }
+}
+#endif
