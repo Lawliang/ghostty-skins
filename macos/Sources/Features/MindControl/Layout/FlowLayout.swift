@@ -33,20 +33,39 @@ extension MindControl {
                              content.origins.mapValues { CGPoint(x: $0.x + M.zonePad, y: $0.y + M.zonePad + label) })
             }
 
-            // Zones, ordered by the data flowing between them.
-            let zoneEdges = data.compactMap { flow -> Layering.Edge? in
-                let a = zone(of: flow.from.system), b = zone(of: flow.to.system)
-                return a == b ? nil : Layering.Edge(from: a, to: b)
-            }
-            // Zones holding only outside systems frame the map, as outside systems do inside a zone: those no
-            // data flows into on the far left, those data flows into on the far right. That keeps a cycle with an
-            // outside zone (phone and cloud) from reordering the columns. Control flows play no part.
-            let receiving = Set(zoneEdges.map(\.to))
+            // Zones. Ones made only of outside systems frame the map, whatever kind of flow crosses their border:
+            // those nothing flows into sit on the far left (so does one with no flows at all), those that only
+            // receive sit on the far right. Every other zone is layered by the data flowing between zones.
+            let declared = map.zones.map(\.id) + [""]
+            func declaration(_ z: String) -> Int { declared.firstIndex(of: z) ?? declared.count }
+            func byDeclaration(_ a: String, _ b: String) -> Bool { (declaration(a), a) < (declaration(b), b) }
+            let crossing = flows.filter { zone(of: $0.from.system) != zone(of: $0.to.system) }
+            let sendingZones = Set(crossing.map { zone(of: $0.from.system) })
+            let receivingZones = Set(crossing.map { zone(of: $0.to.system) })
             let outside = usedZones.filter { z in map.systems.filter { zone(of: $0.id) == z }.allSatisfy(\.external) }
-            let leftmost = outside.filter { !receiving.contains($0) }.sorted()
-            let rightmost = outside.filter { receiving.contains($0) }.sorted()
-            let zoneLayers = ([leftmost] + Layering.layout(nodes: Array(usedZones.subtracting(outside)), edges: zoneEdges).layers + [rightmost])
-                .filter { !$0.isEmpty }
+            let leftmost = outside.filter { !receivingZones.contains($0) }.sorted(by: byDeclaration)
+            let rightmost = outside.filter { receivingZones.contains($0) && !sendingZones.contains($0) }.sorted(by: byDeclaration)
+            let middle = usedZones.subtracting(leftmost).subtracting(rightmost)
+
+            // Layering sorts by id, so give it keys that sort in declaration order. Where data flows both ways
+            // between two zones, the later-declared zone's flow is the return arrow and is left out.
+            let keys = Dictionary(uniqueKeysWithValues: middle.map { z -> (String, String) in
+                let index = String(declaration(z))
+                return (z, String(repeating: "0", count: max(0, 5 - index.count)) + index + "|" + z)
+            })
+            let zonePairs = Set(data.compactMap { flow -> Layering.Edge? in
+                let a = zone(of: flow.from.system), b = zone(of: flow.to.system)
+                return a != b && middle.contains(a) && middle.contains(b) ? Layering.Edge(from: a, to: b) : nil
+            })
+            let zoneEdges = zonePairs.compactMap { pair -> Layering.Edge? in
+                if zonePairs.contains(Layering.Edge(from: pair.to, to: pair.from)) && declaration(pair.from) > declaration(pair.to) { return nil }
+                guard let from = keys[pair.from], let to = keys[pair.to] else { return nil }
+                return Layering.Edge(from: from, to: to)
+            }
+            let zoneOfKey = Dictionary(uniqueKeysWithValues: keys.map { ($1, $0) })
+            let middleLayers = Layering.layout(nodes: Array(keys.values), edges: zoneEdges).layers
+                .map { $0.compactMap { zoneOfKey[$0] } }
+            let zoneLayers = ([leftmost] + middleLayers + [rightmost]).filter { !$0.isEmpty }
             let zoneOrigins = place(zoneLayers, size: { blocks[$0]?.size ?? .zero }, columnGap: M.zoneGap, rowGap: M.zoneGap).origins
 
             // World rects.

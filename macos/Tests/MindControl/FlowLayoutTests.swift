@@ -33,6 +33,48 @@ struct FlowLayoutTests {
         for (i, a) in zones.enumerated() { for b in zones[(i + 1)...] { #expect(!a.rect.intersects(b.rect)) } }
     }
 
+    @Test func passThroughOutsideZoneStaysBetweenItsNeighbours() {
+        let map = FlowFixtures.map(#"""
+        { "version": 1,
+          "zones": [ { "id": "r", "name": "R" }, { "id": "x", "name": "X" }, { "id": "p", "name": "P" } ],
+          "systems": [ { "id": "src", "name": "Src", "zone": "r" },
+                       { "id": "relay", "name": "Relay", "zone": "x", "external": true },
+                       { "id": "dst", "name": "Dst", "zone": "p" } ],
+          "flows": [ { "id": "1", "from": "src", "to": "relay", "kind": "data", "carries": "x" },
+                     { "id": "2", "from": "relay", "to": "dst", "kind": "data", "carries": "x" } ] }
+        """#)
+        let layout = FlowLayout.layout(map: map, broken: [])
+        #expect(rect(layout, "zone:r").maxX < rect(layout, "zone:x").minX)
+        #expect(rect(layout, "zone:x").maxX < rect(layout, "zone:p").minX)
+    }
+
+    @Test func mixedZoneInACycleFollowsDeclarationOrder() {
+        let map = FlowFixtures.map(#"""
+        { "version": 1,
+          "zones": [ { "id": "phone", "name": "Phone" }, { "id": "cloud", "name": "Cloud" } ],
+          "systems": [ { "id": "app", "name": "App", "zone": "phone" },
+                       { "id": "openai", "name": "OpenAI", "zone": "cloud", "external": true },
+                       { "id": "worker", "name": "Worker", "zone": "cloud" } ],
+          "flows": [ { "id": "send", "from": "app", "to": "openai", "kind": "data", "carries": "x" },
+                     { "id": "reply", "from": "openai", "to": "app", "kind": "data", "carries": "x" } ] }
+        """#)
+        let layout = FlowLayout.layout(map: map, broken: [])
+        #expect(rect(layout, "zone:phone").maxX < rect(layout, "zone:cloud").minX)
+    }
+
+    @Test func outsideZoneWithNoFlowsSitsLeftmost() {
+        let map = FlowFixtures.map(#"""
+        { "version": 1,
+          "zones": [ { "id": "a", "name": "A" }, { "id": "b", "name": "B" }, { "id": "e", "name": "E" } ],
+          "systems": [ { "id": "one", "name": "One", "zone": "a" }, { "id": "two", "name": "Two", "zone": "b" },
+                       { "id": "ext", "name": "Ext", "zone": "e", "external": true } ],
+          "flows": [ { "id": "1", "from": "one", "to": "two", "kind": "data", "carries": "x" } ] }
+        """#)
+        let layout = FlowLayout.layout(map: map, broken: [])
+        #expect(rect(layout, "zone:e").maxX < rect(layout, "zone:a").minX)
+        #expect(rect(layout, "zone:a").maxX < rect(layout, "zone:b").minX)
+    }
+
     @Test func dataSourceSitsLeftOfWhatItFeeds() {
         let layout = FlowLayout.layout(map: FlowFixtures.arca, broken: [])
         #expect(rect(layout, "audio").maxX < rect(layout, "agent").minX)
