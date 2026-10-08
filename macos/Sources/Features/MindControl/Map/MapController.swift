@@ -377,6 +377,15 @@ extension MindControl {
             return false
         }
 
+        /// Health view with the issue list in the side panel: the health indicator, the unmapped badge and the view
+        /// switch. A selected box or highlighted step would otherwise keep the side panel.
+        func showHealth() {
+            selection = nil
+            stepHighlight = nil
+            // Its didSet redraws, even when already in Health.
+            mode = .health
+        }
+
         // MARK: Search
 
         func beginSearch(with text: String) {

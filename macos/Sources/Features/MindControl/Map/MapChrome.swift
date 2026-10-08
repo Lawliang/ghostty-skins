@@ -25,7 +25,8 @@ extension MindControl {
                     .fixedSize()
                 Spacer(minLength: 8)
                 if case .ready(let project, let loaded) = model.state {
-                    Picker("View", selection: $controller.mode) {
+                    Picker("View", selection: Binding(get: { controller.mode },
+                                                      set: { $0 == .health ? controller.showHealth() : (controller.mode = $0) })) {
                         Text("Map").tag(SceneStyle.Mode.map)
                         Text("Health").tag(SceneStyle.Mode.health)
                     }
@@ -59,20 +60,20 @@ extension MindControl {
 
         @ViewBuilder
         private func badges(_ report: HealthReport, compact: Bool) -> some View {
-            Button(Panel.healthText(report)) { controller.mode = .health }
+            Button(Panel.healthText(report)) { controller.showHealth() }
                 .buttonStyle(.borderless)
                 .foregroundColor(report.isHealthy ? Self.healthy : Self.warning)
                 .help(report.isHealthy ? "Everything on the map matches the code" : "Show what's wrong")
                 .fixedSize()
             if !compact, let unmapped = Panel.unmappedText(report.unmapped.count) {
-                Button(unmapped) { controller.mode = .health }
+                Button(unmapped) { controller.showHealth() }
                     .buttonStyle(.borderless)
                     .foregroundColor(.secondary)
                     .help("Source files no system's paths cover")
                     .fixedSize()
             }
             if let dense = report.densityWarnings.first {
-                Button(dense.message) { controller.mode = .health }
+                Button(dense.message) { controller.showHealth() }
                     .buttonStyle(.borderless)
                     .foregroundColor(.yellow)
                     .lineLimit(1)

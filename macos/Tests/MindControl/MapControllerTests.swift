@@ -551,5 +551,22 @@ struct MapControllerTests {
         #expect(c.query == "a")
         #expect(recorder.keys == [48, 124, 40])
     }
+    /// The health indicator and the unmapped badge open the issue list even when a box or step is selected.
+    @Test func showingHealthOpensTheIssueListOverASelection() {
+        let c = controller()
+        c.navigate(to: MindControl.SearchResult(kind: .system, title: "Audio", detail: "", target: .system("audio")))
+        #expect(c.selection == .box("audio"))
+        c.showHealth()
+        #expect(c.mode == .health)
+        #expect(c.selection == nil)
+        #expect(c.sidePanel == .health(c.report))
+        // A step highlighted from the feature's list is cleared too.
+        c.mode = .map
+        c.selectFeature("speech")
+        c.goToStep("pcm")
+        c.showHealth()
+        #expect(c.style.selected == nil)
+        #expect(c.sidePanel == .health(c.report))
+    }
 }
 #endif
