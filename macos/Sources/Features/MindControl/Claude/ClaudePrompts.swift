@@ -123,8 +123,9 @@ extension MindControl {
         - "via" is where the hand-off happens: the name of the function, method or symbol, spelled exactly as in the \
         code, without parentheses, arguments or a receiver ("sendAudio", not "session.sendAudio(pcm)"). MindControl looks \
         for it as a whole word in the files the "from" system owns (the files the "to" system owns when "from" is \
-        external) and marks the arrow stale if it isn't there. Find it in the code; never guess. Give every flow a \
-        "via" unless both ends are external; a flow without one is drawn as unverified.
+        external) and marks the arrow stale if it isn't there. Find it in the code; never guess. A "via" starts and ends \
+        with a letter, digit or "_" (the whole-word search can't find "+=" or "->"). Give every flow a "via" unless both \
+        ends are external; a flow without one is drawn as unverified.
         - "when" is a short condition for flows that only happen sometimes ("words heard"). Give each outcome of a \
         decision its own condition ("words heard", "nothing heard"). Flows of the same outcome use exactly the same \
         text, and together form one branch of a feature's route. Flows with the same "when" sit next to each other in a \

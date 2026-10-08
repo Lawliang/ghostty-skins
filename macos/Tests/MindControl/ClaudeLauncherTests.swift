@@ -101,6 +101,13 @@ struct ClaudeLauncherTests {
         }
     }
 
+    /// FlowCheck finds a via with a whole-word (\\b…\\b) search, which needs a word character at each end.
+    @Test func promptsAskForViasTheWholeWordSearchCanFind() {
+        for prompt in [ClaudePrompts.draft(projectName: "arca"), ClaudePrompts.refresh(projectName: "arca")] {
+            #expect(prompt.contains("A \"via\" starts and ends with a letter, digit or \"_\""))
+        }
+    }
+
     /// The example Claude copies must itself be a valid, healthy flow file.
     @Test func promptExampleParsesAndPassesTheChecks() throws {
         let rules = ClaudePrompts.formatAndRules
