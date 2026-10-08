@@ -65,7 +65,8 @@ part or arrow **stale**. A flow with no `via` is **unverified**. Unknown systems
 errors; the rest still draws. Source files no system owns are **unmapped**. A key the format doesn't have (`"flow"`, `"whne"`) is
 ignored, not an error: Health lists it with its line and, for a near miss, the key you probably meant,
 and clicking it opens `flow.json` at that line. In git, the header shows how
-many commits have touched the systems' paths since `flow.json` was last committed. Invalid JSON or a
+many commits have touched the systems' paths since `flow.json` was last committed (nothing when no
+system has paths or git can't count them). Invalid JSON or a
 broken rule shows a list of errors with line numbers instead of the map. A valid file with no systems
 says "This map has no systems yet."
 

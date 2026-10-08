@@ -32,5 +32,24 @@ struct FlowAgeTests {
         try project.commitAll("docs change")
         #expect(FlowAge.age(root: project.url, map: FlowFixtures.arca) == .commits(1))
     }
+    /// "Map up to date" would be a claim nothing was checked for: with no paths, or when git can't count, hide it.
+    @Test func hiddenWhenThereIsNothingToCount() throws {
+        let project = try TempProject()
+        try project.git("init", "-q")
+        let json = #"{ "version": 1, "systems": [ { "id": "a", "name": "A" } ] }"#
+        try project.write(".mindcontrol/flow.json", json)
+        try project.commitAll("map")
+        #expect(FlowAge.age(root: project.url, map: FlowFixtures.map(json)) == .hidden)
+    }
+
+    @Test func hiddenWhenGitCannotCount() throws {
+        let project = try TempProject()
+        try project.git("init", "-q")
+        // A pathspec outside the repository makes rev-list fail.
+        let json = #"{ "version": 1, "systems": [ { "id": "a", "name": "A", "paths": ["../outside/**"] } ] }"#
+        try project.write(".mindcontrol/flow.json", json)
+        try project.commitAll("map")
+        #expect(FlowAge.age(root: project.url, map: FlowFixtures.map(json)) == .hidden)
+    }
 }
 #endif

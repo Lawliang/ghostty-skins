@@ -9,9 +9,11 @@ extension MindControl {
             let sha = String(decoding: log, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
             guard !sha.isEmpty else { return .notCommitted }
             let pathspecs = map.systems.flatMap(\.paths).map { ":(glob)\($0)" }
+            // Nothing to count, or git couldn't: hidden, not "Map up to date".
             guard !pathspecs.isEmpty,
-                  let output = Git.run(root, ["rev-list", "--count", "\(sha)..HEAD", "--"] + pathspecs) else { return .commits(0) }
-            return .commits(Int(String(decoding: output, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0)
+                  let output = Git.run(root, ["rev-list", "--count", "\(sha)..HEAD", "--"] + pathspecs),
+                  let count = Int(String(decoding: output, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)) else { return .hidden }
+            return .commits(count)
         }
     }
 }
