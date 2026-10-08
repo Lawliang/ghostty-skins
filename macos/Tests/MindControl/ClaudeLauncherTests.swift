@@ -78,6 +78,22 @@ struct ClaudeLauncherTests {
         #expect(prompt.contains("\(MindControl.FlowCheck.maxFlows) flows"))
     }
 
+    /// Every "via" and Swift anchor has to be in a file MindControl reads, so the prompts name exactly those files.
+    @Test func promptsNameTheFilesMindControlReads() {
+        for prompt in [ClaudePrompts.draft(projectName: "arca"), ClaudePrompts.refresh(projectName: "arca")] {
+            for ext in MindControl.SourceFilter.sourceExtensions {
+                #expect(prompt.contains("`.\(ext)`"), "prompt should list .\(ext)")
+            }
+            for folder in MindControl.SourceFilter.excludedDirectories {
+                #expect(prompt.contains("`\(folder)`"), "prompt should list the \(folder) folder")
+            }
+            for needle in ["\"Tests\"", "\"-tests\"", "\"_tests\"", "ModelTests.swift", "server_test.go", "test_core.py", "app.test.ts",
+                           "app.spec.js"] {
+                #expect(prompt.contains(needle), "prompt should mention \(needle)")
+            }
+        }
+    }
+
     /// The example Claude copies must itself be a valid, healthy flow file.
     @Test func promptExampleParsesAndPassesTheChecks() throws {
         let rules = ClaudePrompts.formatAndRules

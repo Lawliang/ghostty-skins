@@ -100,8 +100,14 @@ extension MindControl {
         first wildcard wins: "app/Sources/Coordination/Journal*.swift" beats "app/Sources/Coordination/**". Patterns from \
         two systems with equally long fixed text matching the same file are an error, so when one folder holds several \
         systems, give each a pattern with more fixed text than the folder's catch-all.
-          - Every source file should belong to a system: MindControl lists source files no system owns as unmapped. It \
-        already ignores test files and folders such as docs, tests, scripts, tools and examples, so don't cover those.
+          - Every source file should belong to a system: MindControl lists source files no system owns as unmapped. \
+        It only counts the files it reads (below), so don't cover the others.
+        - MindControl reads only source files whose names end in \(codeList(SourceFilter.sourceExtensions, prefix: ".")). \
+        It skips everything inside a folder named \(codeList(SourceFilter.excludedDirectories)) (ignoring case) or whose \
+        name ends in "Tests", "-tests" or "_tests", and test files: names that, before the extension, end in "Test", \
+        "Tests", "Spec", "_test", ".test" or ".spec" or start with "test_" (ModelTests.swift, server_test.go, \
+        test_core.py, app.test.ts, app.spec.js). Every "via" and every Swift type "anchor" must be in a file it reads, \
+        or the arrow or part is marked stale.
         - "external": true marks things outside this codebase: services, hardware, the OS. Leave "paths" and "parts" out \
         of an external system entirely (even an empty "parts" list is an error).
         - "parts" are a system's main pieces, at most \(FlowCheck.maxPartsPerSystem) parts per system. A part's optional \
@@ -129,5 +135,10 @@ extension MindControl {
         - Don't make systems, parts or flows for docs, scripts, tests, tooling or anything that doesn't move data or \
         control. Fold helpers into the system that uses them; its "paths" can cover them.
         """
+
+        /// "`a`, `b`, `c`", sorted so the prompt is the same every time.
+        private static func codeList(_ items: Set<String>, prefix: String = "") -> String {
+            items.sorted().map { "`\(prefix)\($0)`" }.joined(separator: ", ")
+        }
     }
 }
