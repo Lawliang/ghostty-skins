@@ -3,6 +3,10 @@ import Metal
 extension MindControl {
     /// Every render pipeline the renderer uses, built once at startup.
     struct Pipelines {
+        let boxes: MTLRenderPipelineState
+        let arrows: MTLRenderPipelineState
+        let pulses: MTLRenderPipelineState
+        let markers: MTLRenderPipelineState
         let composite: MTLRenderPipelineState
         let bloomPrefilter: MTLRenderPipelineState
         let bloomDownsample: MTLRenderPipelineState
@@ -10,6 +14,10 @@ extension MindControl {
 
         init(device: MTLDevice, library: MTLLibrary) throws {
             let hdr = Renderer.hdrFormat
+            boxes = try Self.make(device, library, "mcBoxVertex", "mcBoxFragment", format: hdr, additive: true)
+            arrows = try Self.make(device, library, "mcArrowVertex", "mcArrowFragment", format: hdr, additive: true)
+            pulses = try Self.make(device, library, "mcPulseVertex", "mcPulseFragment", format: hdr, additive: true)
+            markers = try Self.make(device, library, "mcMarkerVertex", "mcMarkerFragment", format: hdr, additive: true)
             composite = try Self.make(device, library, "mcFullscreenVertex", "mcCompositeFragment", format: Renderer.outputFormat, additive: false)
             bloomPrefilter = try Self.make(device, library, "mcFullscreenVertex", "mcBloomPrefilter", format: hdr, additive: false)
             bloomDownsample = try Self.make(device, library, "mcFullscreenVertex", "mcBloomDownsample", format: hdr, additive: false)
