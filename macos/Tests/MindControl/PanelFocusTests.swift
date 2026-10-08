@@ -139,5 +139,39 @@ struct PanelFocusTests {
         for sub in view.subviews { if let found = find(type, in: sub) { return found } }
         return nil
     }
+    /// The holder takes focus back whenever the panel moves to another state without a map view, and only then.
+    @Test func theHolderRetakesFocusWhenTheStateChanges() async throws {
+        let project = MindControl.Model.Project(root: URL(fileURLWithPath: "/tmp/arca"), name: "arca", claudeBlockReason: nil)
+        let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 300, height: 200), styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        let content = NSView(frame: window.contentLayoutRect)
+        window.contentView = content
+        let other = NSTextView(frame: CGRect(x: 0, y: 0, width: 50, height: 20))
+        content.addSubview(other)
+        let host = NSHostingView(rootView: MindControl.PanelFocusHolder(onEscape: {}, state: .loading(project)))
+        host.frame = content.bounds
+        content.addSubview(host)
+        func settle(until done: () -> Bool) async throws {
+            for _ in 0..<50 where !done() {
+                host.layoutSubtreeIfNeeded()
+                try await Task.sleep(nanoseconds: 10_000_000)
+            }
+        }
+        try await settle { window.firstResponder is MindControl.PanelKeyView }
+        #expect(window.firstResponder is MindControl.PanelKeyView)
+        // Something else took focus (the terminal, say); the same state again leaves it there.
+        window.makeFirstResponder(other)
+        host.rootView = MindControl.PanelFocusHolder(onEscape: {}, state: .loading(project))
+        try await settle { false }
+        #expect(window.firstResponder === other)
+        // A new state takes it back.
+        host.rootView = MindControl.PanelFocusHolder(onEscape: {}, state: .noFlowFile(project))
+        try await settle { window.firstResponder is MindControl.PanelKeyView }
+        #expect(window.firstResponder is MindControl.PanelKeyView)
+        window.makeFirstResponder(other)
+        host.rootView = MindControl.PanelFocusHolder(onEscape: {}, state: .invalid(project, []))
+        try await settle { window.firstResponder is MindControl.PanelKeyView }
+        #expect(window.firstResponder is MindControl.PanelKeyView)
+    }
 }
 #endif

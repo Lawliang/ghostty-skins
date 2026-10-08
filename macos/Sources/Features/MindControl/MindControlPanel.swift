@@ -30,7 +30,7 @@ extension MindControl {
                 Self.background
                 if !hasMapView {
                     // Without the map view nothing else takes keyboard focus, and keys would reach the terminal.
-                    PanelFocusHolder(onEscape: onClose)
+                    PanelFocusHolder(onEscape: onClose, state: model.state)
                 }
                 VStack(spacing: 0) {
                     MapHeader(model: model, controller: controller, canRunClaude: canRunClaude,

@@ -15,7 +15,11 @@ extension MindControl {
 
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
-            // Next turn, once SwiftUI has finished inserting it.
+            takeFocus()
+        }
+
+        /// On the next turn, once SwiftUI has finished updating.
+        func takeFocus() {
             DispatchQueue.main.async { [weak self] in
                 guard let self, let window = self.window else { return }
                 window.makeFirstResponder(self)
@@ -48,8 +52,18 @@ extension MindControl {
         }
     }
 
+    /// Takes keyboard focus when it appears and again whenever `state` changes (loading, then no flow file, …),
+    /// since a click elsewhere may have moved focus meanwhile.
     struct PanelFocusHolder: NSViewRepresentable {
         let onEscape: () -> Void
+        let state: Model.State
+
+        final class Coordinator {
+            var state: Model.State
+            init(state: Model.State) { self.state = state }
+        }
+
+        func makeCoordinator() -> Coordinator { Coordinator(state: state) }
 
         func makeNSView(context: Context) -> PanelKeyView {
             let view = PanelKeyView()
@@ -59,6 +73,9 @@ extension MindControl {
 
         func updateNSView(_ view: PanelKeyView, context: Context) {
             view.onEscape = onEscape
+            guard context.coordinator.state != state else { return }
+            context.coordinator.state = state
+            view.takeFocus()
         }
     }
 }
