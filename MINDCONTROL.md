@@ -64,7 +64,8 @@ On every open MindControl checks the file against the code. An anchor or `via` i
 part or arrow **stale**. A flow with no `via` is **unverified**. Unknown systems, parts or flows are
 errors; the rest still draws. Source files no system owns are **unmapped**. In git, the header shows how
 many commits have touched the systems' paths since `flow.json` was last committed. Invalid JSON or a
-broken rule shows a list of errors with line numbers instead of the map.
+broken rule shows a list of errors with line numbers instead of the map. A valid file with no systems
+says "This map has no systems yet."
 
 ## Views and controls
 

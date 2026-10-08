@@ -626,6 +626,16 @@ struct MapControllerTests {
         #expect(!c.escape())
     }
 
+    /// A valid map with nothing to draw says so instead of showing a dark canvas.
+    @Test func aMapWithNoSystemsSaysSo() {
+        let empty = controller(showing: FlowFixtures.map(#"{ "version": 1, "systems": [] }"#))
+        #expect(empty.emptyMapMessage == "This map has no systems yet.")
+        let zonesOnly = controller(showing: FlowFixtures.map(#"{ "version": 1, "zones": [ { "id": "z", "name": "Z" } ], "systems": [] }"#))
+        #expect(zonesOnly.emptyMapMessage == "This map has no systems yet.")
+        #expect(controller().emptyMapMessage == nil)
+        #expect(MapController().emptyMapMessage == nil)
+    }
+
     /// Keys the map doesn't use (Tab, arrows, anything with ⌘) go up the responder chain, so Tab can move to the
     /// search field and menu shortcuts still work.
     @Test func theMapPassesOnKeysItDoesNotUse() throws {

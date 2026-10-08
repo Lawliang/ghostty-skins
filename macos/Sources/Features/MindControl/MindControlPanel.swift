@@ -70,6 +70,13 @@ extension MindControl {
             if let renderer {
                 FlowMetalView(renderer: renderer, controller: controller)
             }
+            if let message = controller.emptyMapMessage {
+                Text(message)
+                    .font(.system(size: 13))
+                    .foregroundColor(.secondary)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .allowsHitTesting(false)
+            }
             // Below the feature bar, so the search field sits right above it and its results cover it.
             HStack(spacing: 0) {
                 Spacer(minLength: 0)

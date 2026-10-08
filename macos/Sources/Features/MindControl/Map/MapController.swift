@@ -685,6 +685,12 @@ extension MindControl {
             return planned
         }
 
+        /// Shown over the canvas when a loaded map draws no systems; nil otherwise (and before a load).
+        var emptyMapMessage: String? {
+            guard map != nil, !baseLayout.boxes.contains(where: { $0.kind == .system }) else { return nil }
+            return "This map has no systems yet."
+        }
+
         // MARK: Side panel
 
         var sidePanel: SidePanelContent {
