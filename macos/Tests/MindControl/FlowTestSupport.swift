@@ -86,22 +86,67 @@ final class TempProject {
         for (path, contents) in files { try write(path, contents) }
     }
 
-    @discardableResult
-    func git(_ args: String...) throws -> Int32 {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
-        process.arguments = ["-C", url.path, "-c", "user.name=Test", "-c", "user.email=test@example.com"] + args
-        process.standardOutput = FileHandle.nullDevice
-        process.standardError = FileHandle.nullDevice
-        try process.run()
-        process.waitUntilExit()
-        return process.terminationStatus
+    struct GitFailure: Error, CustomStringConvertible {
+        let arguments: [String]
+        let status: Int32
+        let message: String
+        var description: String { "git \(arguments.joined(separator: " ")) exited \(status): \(message)" }
     }
 
-    /// `git add -A && git commit`, for test repos only.
+    /// The exit status of git run in the project.
+    @discardableResult
+    func git(_ args: String...) throws -> Int32 {
+        try run(args).status
+    }
+
+    /// `git add -A && git commit`, for test repos only. Throws when either step fails.
     func commitAll(_ message: String) throws {
-        try git("add", "-A")
-        try git("commit", "-q", "-m", message)
+        for args in [["add", "-A"], ["commit", "-q", "-m", message]] {
+            let result = try run(args)
+            guard result.status == 0 else {
+                throw GitFailure(arguments: args, status: result.status, message: result.errors)
+            }
+        }
+    }
+
+    /// Runs git with a fixed identity and signing off, so commits work (and never prompt) on a
+    /// machine that signs by default.
+    private func run(_ args: [String]) throws -> (status: Int32, errors: String) {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+        process.arguments = ["-C", url.path, "-c", "user.name=Test", "-c", "user.email=test@example.com",
+                             "-c", "commit.gpgsign=false", "-c", "tag.gpgsign=false"] + args
+        let errors = Pipe()
+        process.standardInput = FileHandle.nullDevice
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = errors
+        try process.run()
+        // Read before waiting so a long error can't fill the pipe and deadlock.
+        let data = errors.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        return (process.terminationStatus, String(decoding: data, as: UTF8.self))
+    }
+}
+
+struct TempProjectTests {
+    @Test func commitAllThrowsWhenGitFails() throws {
+        let project = try TempProject()
+        try project.write("main.swift", "let x = 1\n")
+        // No `git init`, so `git add` fails.
+        #expect(throws: (any Error).self) { try project.commitAll("first") }
+    }
+
+    @Test func commitsAndTagsAreNeverSigned() throws {
+        let project = try TempProject()
+        try project.git("init", "-q")
+        // A machine that signs by default, with a signer that always fails.
+        try project.git("config", "commit.gpgsign", "true")
+        try project.git("config", "tag.gpgsign", "true")
+        try project.git("config", "gpg.program", "/usr/bin/false")
+        try project.write("main.swift", "let x = 1\n")
+        try project.commitAll("first")
+        #expect(try project.git("rev-parse", "--verify", "--quiet", "HEAD") == 0)
+        #expect(try project.git("tag", "-a", "v1", "-m", "v1") == 0)
     }
 }
 #endif
