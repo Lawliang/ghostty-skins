@@ -89,6 +89,8 @@ extension MindControl {
         struct Plan {
             var curves: [String: Curve] = [:]
             var routes: [String: Route] = [:]
+            /// How many times routing tested a curve against a box: the cost of the pass.
+            var boxChecks = 0
         }
 
         static func curves(for layout: MapLayout) -> [String: Curve] { plan(for: layout).curves }
@@ -118,14 +120,15 @@ extension MindControl {
                 plan.routes[member.arrow.id] = route
                 lines[member.arrow.id] = Polyline(curve)
             }
+            let boxes = Boxes(layout)
             var idsByLevel: [MapLayout.ArrowLevel: [String]] = [:]
             for member in memberGroups.joined() { idsByLevel[member.arrow.level, default: []].append(member.arrow.id) }
             for members in memberGroups {
                 guard let level = members.first?.arrow.level else { continue }
                 let own = Set(members.map(\.arrow.id))
                 let others = { [lines] in (idsByLevel[level] ?? []).filter { !own.contains($0) }.compactMap { lines[$0] } }
-                guard let detour = detour(members, facing: members.compactMap { lines[$0.arrow.id] }, layout: layout,
-                                          others: others) else { continue }
+                guard let detour = detour(members, facing: members.compactMap { lines[$0.arrow.id] }, layout: layout, boxes: boxes,
+                                          others: others, checks: &plan.boxChecks) else { continue }
                 for (member, choice) in zip(members, detour) {
                     plan.curves[member.arrow.id] = choice.line.curve
                     plan.routes[member.arrow.id] = choice.route
@@ -295,12 +298,13 @@ extension MindControl {
         /// and short handles, and the one crossing the fewest boxes wins. Ties go to the fewest name strips crossed
         /// (of the boxes it runs inside), then the fewest other arrows at its level crossed or met end to end, then
         /// the shortest. The facing edges win any tie with them, so nil again.
-        private static func detour(_ members: [Member], facing: [Polyline], layout: MapLayout,
-                                   others: () -> [Polyline]) -> [(route: Route, line: Polyline)]? {
+        private static func detour(_ members: [Member], facing: [Polyline], layout: MapLayout, boxes: Boxes,
+                                   others: () -> [Polyline], checks: inout Int) -> [(route: Route, line: Polyline)]? {
             guard let first = members.first, facing.count == members.count else { return nil }
             let ends = [first.arrow.from, first.arrow.to]
-            let obstacles = obstacles(between: first.from, and: first.to, ids: ends, level: first.arrow.level, layout: layout)
-            let baseline = facing.reduce(0) { $0 + $1.entered(obstacles, upTo: .max) }
+            let level = layout.fixedLevel ? .part : first.arrow.level
+            let obstacles = Obstacles(boxes, level: level, between: first.from, and: first.to, ids: ends)
+            let baseline = facing.reduce(0) { $0 + obstacles.entered(by: $1, upTo: .max, checks: &checks) }
             guard baseline > 0 else { return nil }
 
             // Sides are chosen for the pair, so a flow and its return leave and enter by the same edges.
@@ -315,7 +319,7 @@ extension MindControl {
                             let forward = member.arrow.from == first.pairFirst
                             let route = Route(exit: forward ? sideOne : sideTwo, entry: forward ? sideTwo : sideOne, detour: true, short: short)
                             let line = Polyline(curve(member, route, pairFirst: first.pairFirst))
-                            score += line.entered(obstacles, upTo: fewest - score)
+                            score += obstacles.entered(by: line, upTo: fewest - score, checks: &checks)
                             choices.append((route, line))
                         }
                         guard score <= fewest else { continue }
@@ -327,11 +331,15 @@ extension MindControl {
             }
             guard tied.count > 1 else { return tied.first }
             let strips = nameStrips(around: first.from, and: first.to, ids: ends, layout: layout)
-            let stripCounts = tied.map { $0.reduce(0) { $0 + $1.line.entered(strips, upTo: .max) } }
+            let stripCounts = tied.map { $0.reduce(0) { $0 + $1.line.entered(strips, upTo: .max, checks: &checks) } }
             let fewestStrips = stripCounts.min() ?? 0
             tied = zip(tied, stripCounts).filter { $0.1 == fewestStrips }.map(\.0)
             guard tied.count > 1 else { return tied.first }
-            let placed = others()
+            // Only arrows near the tied candidates can cross them or share an end with them.
+            var reach = tied[0][0].line.bounds
+            for line in tied.joined().map(\.line) { reach = reach.union(line.bounds) }
+            let near = reach.grown(by: 12)
+            let placed = others().filter { $0.bounds.overlaps(near) }
             var best: (choices: [(route: Route, line: Polyline)], meets: Int, length: CGFloat)?
             for choices in tied {
                 let meets = choices.reduce(0) { total, choice in
@@ -357,22 +365,103 @@ extension MindControl {
             }
         }
 
-        /// The boxes an arrow at `level` must not pass over: those drawn at that level, other than the two it
-        /// joins and any box holding either (a part's system, a system's zone). Its own two boxes count too,
-        /// slightly shrunk so leaving an edge isn't a crossing, unless one holds the other.
-        private static func obstacles(between a: CGRect, and b: CGRect, ids: [String], level: MapLayout.ArrowLevel,
-                                      layout: MapLayout) -> [Area] {
-            let shown: Set<MapLayout.BoxKind>
-            switch layout.fixedLevel ? .part : level {
-            case .zone: shown = [.zone]
-            case .system: shown = [.zone, .system]
-            case .part: shown = [.zone, .system, .part]
+        /// A layout's boxes, prepared once per pass as a tree: zones hold their systems, systems their parts. A
+        /// curve that misses a box's rect misses everything inside it, so whole zones and systems are skipped at once.
+        private struct Boxes {
+            let boxes: [MapLayout.Box]
+            /// Each box shrunk by 1 pt, so touching an edge isn't entering.
+            let areas: [Area]
+            let rects: [Area]
+            /// 0 for a zone, 1 a system, 2 a part: the arrow level that starts drawing it.
+            let depths: [Int]
+            let children: [[Int]]
+            let roots: [Int]
+            let indexOf: [String: Int]
+
+            init(_ layout: MapLayout) {
+                let boxes = layout.boxes
+                self.boxes = boxes
+                areas = boxes.map { Area($0.rect.insetBy(dx: 1, dy: 1)) }
+                rects = boxes.map { Area($0.rect) }
+                depths = boxes.map { box in
+                    switch box.kind {
+                    case .zone: 0
+                    case .system: 1
+                    case .part: 2
+                    }
+                }
+                var indexOf: [String: Int] = [:]
+                for (i, box) in boxes.enumerated() where indexOf[box.id] == nil { indexOf[box.id] = i }
+                self.indexOf = indexOf
+                // A part sits in the system its id names, a system in the zone holding it; anything not inside the
+                // box it should be in is a root, so skipping a box never skips something outside it.
+                let zones = boxes.indices.filter { boxes[$0].kind == .zone }
+                var children = Array(repeating: [Int](), count: boxes.count)
+                var roots: [Int] = []
+                for (i, box) in boxes.enumerated() {
+                    var parent: Int?
+                    switch box.kind {
+                    case .zone: parent = nil
+                    case .system: parent = zones.first { boxes[$0].rect.contains(box.rect) }
+                    case .part:
+                        let system = box.id.split(separator: ".", maxSplits: 1).first.flatMap { indexOf[String($0)] }
+                        if let system, system != i, boxes[system].kind == .system, boxes[system].rect.contains(box.rect) {
+                            parent = system
+                        } else {
+                            parent = zones.first { boxes[$0].rect.contains(box.rect) }
+                        }
+                    }
+                    if let parent { children[parent].append(i) } else { roots.append(i) }
+                }
+                self.children = children
+                self.roots = roots
             }
-            var out = layout.boxes.filter { box in
-                shown.contains(box.kind) && !ids.contains(box.id) && !box.rect.contains(a) && !box.rect.contains(b)
-            }.map { $0.rect.insetBy(dx: 1, dy: 1) }
-            if !a.contains(b), !b.contains(a) { out += [a.insetBy(dx: 2, dy: 2), b.insetBy(dx: 2, dy: 2)] }
-            return out.filter { !$0.isNull && !$0.isEmpty }.map(Area.init)
+        }
+
+        /// The boxes an arrow at `level` must not pass over: those drawn at that level, other than the two it joins
+        /// and any box holding either (a part's system, a system's zone). Its own two boxes count too, slightly
+        /// shrunk so leaving an edge isn't a crossing, unless one holds the other.
+        private struct Obstacles {
+            let boxes: Boxes
+            /// Deepest kind drawn: 0 zones, 1 systems, 2 parts.
+            let depth: Int
+            /// The arrow's own boxes and the boxes holding them: never obstacles, though what's inside them can be.
+            let skipped: [Int]
+            let roots: [Int]
+            let own: [Area]
+
+            init(_ boxes: Boxes, level: MapLayout.ArrowLevel, between a: CGRect, and b: CGRect, ids: [String]) {
+                self.boxes = boxes
+                let depth = level.rawValue
+                self.depth = depth
+                // A box holding an end holds its rect, so it is the end's ancestor or a root holding it.
+                var skipped = ids.compactMap { boxes.indexOf[$0] }
+                var stack = boxes.roots
+                while let i = stack.popLast() {
+                    let rect = boxes.boxes[i].rect
+                    guard rect.contains(a) || rect.contains(b) else { continue }
+                    if !skipped.contains(i) { skipped.append(i) }
+                    stack += boxes.children[i]
+                }
+                self.skipped = skipped
+                roots = boxes.roots.filter { boxes.depths[$0] <= depth }
+                own = a.contains(b) || b.contains(a) ? []
+                    : [a.insetBy(dx: 2, dy: 2), b.insetBy(dx: 2, dy: 2)].filter { !$0.isNull && !$0.isEmpty }.map(Area.init)
+            }
+
+            /// How many of the boxes the line passes inside, counting no further than `limit` + 1. A box the line's
+            /// bounds miss is skipped with everything inside it.
+            func entered(by line: Polyline, upTo limit: Int, checks: inout Int) -> Int {
+                var count = line.entered(own, upTo: limit, checks: &checks)
+                var stack = roots
+                while count <= limit, let i = stack.popLast() {
+                    checks += 1
+                    guard line.touches(boxes.rects[i]) else { continue }
+                    if !skipped.contains(i), line.enters(boxes.areas[i]) { count += 1 }
+                    for child in boxes.children[i] where boxes.depths[child] <= depth { stack.append(child) }
+                }
+                return count
+            }
         }
     }
 }
@@ -390,6 +479,14 @@ extension MindControl.ArrowRouter {
         }
 
         init(_ r: CGRect) { self.init(minX: r.minX, minY: r.minY, maxX: r.maxX, maxY: r.maxY) }
+
+        func overlaps(_ o: Area) -> Bool { maxX > o.minX && minX < o.maxX && maxY > o.minY && minY < o.maxY }
+
+        func grown(by d: CGFloat) -> Area { Area(minX: minX - d, minY: minY - d, maxX: maxX + d, maxY: maxY + d) }
+
+        func union(_ o: Area) -> Area {
+            Area(minX: min(minX, o.minX), minY: min(minY, o.minY), maxX: max(maxX, o.maxX), maxY: max(maxY, o.maxY))
+        }
     }
 
     /// A curve sampled at 16 segments, with the box around the samples.
@@ -420,22 +517,44 @@ extension MindControl.ArrowRouter {
         }
 
         /// How many of `boxes` the line passes inside, counting no further than `limit` + 1.
-        func entered(_ boxes: [Area], upTo limit: Int) -> Int {
+        func entered(_ boxes: [Area], upTo limit: Int, checks: inout Int) -> Int {
             var count = 0
-            for box in boxes where count <= limit && enters(box) { count += 1 }
+            for box in boxes where count <= limit {
+                checks += 1
+                if enters(box) { count += 1 }
+            }
             return count
         }
 
+        /// Whether some segment's box overlaps `r`: cheap, and tighter than the whole line's box for a long curve
+        /// passing by a large box.
+        func touches(_ r: Area) -> Bool {
+            guard bounds.overlaps(r) else { return false }
+            var i = 1
+            while i < points.count {
+                let p = points[i - 1], q = points[i]
+                i += 1
+                if max(p.x, q.x) > r.minX, min(p.x, q.x) < r.maxX, max(p.y, q.y) > r.minY, min(p.y, q.y) < r.maxY { return true }
+            }
+            return false
+        }
+
         func enters(_ r: Area) -> Bool {
-            guard bounds.maxX > r.minX, bounds.minX < r.maxX, bounds.maxY > r.minY, bounds.minY < r.maxY else { return false }
-            for i in 1..<points.count where Self.segment(points[i - 1], points[i], hits: r) { return true }
+            guard bounds.overlaps(r) else { return false }
+            var i = 1
+            while i < points.count {
+                let p = points[i - 1], q = points[i]
+                i += 1
+                // A segment whose box only touches the rect can't reach inside it.
+                if max(p.x, q.x) <= r.minX || min(p.x, q.x) >= r.maxX || max(p.y, q.y) <= r.minY || min(p.y, q.y) >= r.maxY { continue }
+                if Self.segment(p, q, hits: r) { return true }
+            }
             return false
         }
 
         /// Whether the two lines cross. Lines that only touch don't.
         func crosses(_ other: Polyline) -> Bool {
-            guard bounds.maxX >= other.bounds.minX, bounds.minX <= other.bounds.maxX,
-                  bounds.maxY >= other.bounds.minY, bounds.minY <= other.bounds.maxY else { return false }
+            guard bounds.grown(by: 1).overlaps(other.bounds) else { return false }
             func side(_ a: CGPoint, _ b: CGPoint, _ c: CGPoint) -> CGFloat { (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x) }
             let theirs = other.bounds
             for i in 1..<points.count {
@@ -454,21 +573,24 @@ extension MindControl.ArrowRouter {
 
         /// Whether an end lands within 12 pt of an end of `other`, where their arrowheads would mix.
         func sharesAnEnd(with other: Polyline) -> Bool {
-            let mine = [curve.p0, curve.p3], theirs = [other.curve.p0, other.curve.p3]
-            return mine.contains { a in theirs.contains { b in hypot(a.x - b.x, a.y - b.y) < 12 } }
+            func near(_ a: CGPoint, _ b: CGPoint) -> Bool { (a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y) < 144 }
+            return near(curve.p0, other.curve.p0) || near(curve.p0, other.curve.p3)
+                || near(curve.p3, other.curve.p0) || near(curve.p3, other.curve.p3)
         }
 
         /// Liang–Barsky: whether the segment from `p` to `q` enters the rect's interior.
         private static func segment(_ p: CGPoint, _ q: CGPoint, hits r: Area) -> Bool {
             let dx = q.x - p.x, dy = q.y - p.y
             var low: CGFloat = 0, high: CGFloat = 1
-            func clip(_ edge: CGFloat, _ delta: CGFloat) -> Bool {
-                if delta == 0 { return edge > 0 }
-                let t = edge / delta
-                if delta < 0 { low = max(low, t) } else { high = min(high, t) }
-                return low < high
-            }
-            return clip(p.x - r.minX, -dx) && clip(r.maxX - p.x, dx) && clip(p.y - r.minY, -dy) && clip(r.maxY - p.y, dy)
+            return clip(p.x - r.minX, -dx, &low, &high) && clip(r.maxX - p.x, dx, &low, &high)
+                && clip(p.y - r.minY, -dy, &low, &high) && clip(r.maxY - p.y, dy, &low, &high)
+        }
+
+        private static func clip(_ edge: CGFloat, _ delta: CGFloat, _ low: inout CGFloat, _ high: inout CGFloat) -> Bool {
+            if delta == 0 { return edge > 0 }
+            let t = edge / delta
+            if delta < 0 { low = max(low, t) } else { high = min(high, t) }
+            return low < high
         }
     }
 }

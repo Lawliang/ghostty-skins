@@ -222,6 +222,39 @@ struct ArrowRouterTests {
         #expect(curve.p1.x < curve.p0.x)
     }
 
+    /// A map at the density limits: 20 systems of 8 parts in 3 zones, 60 flows between random parts.
+    static func denseMap() -> MindControl.FlowMap {
+        var seed: UInt64 = 42
+        func next(_ n: Int) -> Int {
+            seed = seed &* 6364136223846793005 &+ 1442695040888963407
+            return Int((seed >> 33) % UInt64(n))
+        }
+        let systems = (0..<20).map { s in
+            let parts = (0..<8).map { #"{ "id": "p\#($0)", "name": "Part \#($0)" }"# }.joined(separator: ", ")
+            return #"{ "id": "s\#(s)", "name": "System \#(s)", "zone": "z\#(s % 3)", "parts": [\#(parts)] }"#
+        }
+        let flows = (0..<60).map { f -> String in
+            let a = next(20), b = next(20), from = next(8), to = next(8)
+            let kind = next(3) == 0 ? "control" : "data"
+            return #"{ "id": "f\#(f)", "from": "s\#(a).p\#(from)", "to": "s\#(b == a ? (b + 1) % 20 : b).p\#(to)", "kind": "\#(kind)", "carries": "x\#(f)" }"#
+        }
+        return FlowFixtures.map(#"""
+        { "version": 1,
+          "zones": [ { "id": "z0", "name": "A" }, { "id": "z1", "name": "B" }, { "id": "z2", "name": "C" } ],
+          "systems": [\#(systems.joined(separator: ", "))],
+          "flows": [\#(flows.joined(separator: ", "))] }
+        """#)
+    }
+
+    @Test func aDenseMapIsRoutedWithFewBoxChecks() {
+        // A curve that misses a zone or system skips everything inside it. Testing every candidate against every box
+        // the arrow's level draws took about 132 000 checks here.
+        let layout = MindControl.FlowLayout.layout(map: Self.denseMap(), broken: [])
+        #expect(layout.boxes.count > 180 && layout.arrows.count > 120)
+        let plan = ArrowRouter.plan(for: layout)
+        #expect(plan.boxChecks < 60_000, "\(plan.boxChecks) box checks")
+    }
+
     @Test func routingIsDeterministic() {
         let layout = MindControl.FlowLayout.layout(map: FlowFixtures.arca, broken: [])
         #expect(ArrowRouter.curves(for: layout) == ArrowRouter.curves(for: layout))
