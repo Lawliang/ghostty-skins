@@ -78,6 +78,7 @@ extension MindControl {
             .padding(.top, 44)
             HStack(alignment: .top, spacing: 8) {
                 FeatureBar(controller: controller)
+                Spacer(minLength: 0)
                 SearchBox(controller: controller).padding(.trailing, 14).padding(.top, 7)
             }
         }

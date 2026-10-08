@@ -98,5 +98,46 @@ struct PanelFocusTests {
         #expect(tabs == 1 || window.attachedSheet != nil)
         if let sheet = window.attachedSheet { window.endSheet(sheet) }
     }
+    /// The feature bar runs along the top of the map. Only its chips take the mouse; clicks and scrolls beside them
+    /// reach the map.
+    @Test func theMapGetsTheMouseBesideTheFeatureChips() async throws {
+        let files = FlowFixtures.arcaSources
+        let model = MindControl.Model(snapshot: { root in
+            MindControl.FlowSnapshot(root: root, flowData: Data(FlowFixtures.arcaJSON.utf8), layoutData: nil,
+                                     sourceFiles: files.keys.sorted(), read: { files[$0] })
+        }, age: { _, _ in .hidden }, guardReason: { _ in nil }, watch: false)
+        model.load(pwd: URL(fileURLWithPath: "/tmp/mc-hit"))
+        await model.loadingTask?.value
+        guard case .ready = model.state else { Issue.record("\(model.state)"); return }
+        let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 1200, height: 800), styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        let host = NSHostingView(rootView: MindControl.Panel(model: model, onClose: {}))
+        window.contentView = host
+        window.orderBack(nil)
+        defer { window.orderOut(nil) }
+        var mapView: MindControl.FlowMTKView?
+        for _ in 0..<50 {
+            host.layoutSubtreeIfNeeded()
+            mapView = Self.find(MindControl.FlowMTKView.self, in: host)
+            if mapView != nil { break }
+            try await Task.sleep(nanoseconds: 20_000_000)
+        }
+        let map = try #require(mapView)
+        // The feature bar's row: just below the map view's top edge, in the map view's (top-left) points.
+        func hit(_ x: CGFloat, _ yFromMapTop: CGFloat) -> NSView? {
+            let inMap = CGPoint(x: x, y: map.isFlipped ? yFromMapTop : map.bounds.height - yFromMapTop)
+            return host.hitTest(map.convert(inMap, to: host.superview))
+        }
+        let beside = hit(700, 22)
+        #expect(beside === map || beside?.isDescendant(of: map) == true, "hit \(String(describing: beside))")
+        // The middle of the map, for comparison.
+        #expect(hit(600, 400) === map || hit(600, 400)?.isDescendant(of: map) == true)
+    }
+
+    private static func find<T: NSView>(_ type: T.Type, in view: NSView) -> T? {
+        if let match = view as? T { return match }
+        for sub in view.subviews { if let found = find(type, in: sub) { return found } }
+        return nil
+    }
 }
 #endif

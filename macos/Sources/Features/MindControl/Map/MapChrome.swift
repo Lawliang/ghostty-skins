@@ -109,37 +109,44 @@ extension MindControl {
         }
     }
 
-    /// One chip per feature, in file order, each in its own colour.
+    /// One chip per feature, in file order, each in its own colour. Only as wide as its chips: a scroll view's clip
+    /// view takes every click and scroll in its frame, so it's used only when the chips don't fit, and the map
+    /// gets the mouse beside them.
     struct FeatureBar: View {
         @ObservedObject var controller: MapController
 
         var body: some View {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(Array((controller.map?.features ?? []).enumerated()), id: \.element.id) { index, feature in
-                        let color = Palette.feature(index)
-                        let selected = controller.selectedFeature == feature.id
-                        Button { controller.selectFeature(feature.id) } label: {
-                            HStack(spacing: 6) {
-                                Circle()
-                                    .fill(Color(.sRGB, red: Self.srgb(color.x), green: Self.srgb(color.y), blue: Self.srgb(color.z)))
-                                    .frame(width: 8, height: 8)
-                                Text(feature.name).font(.system(size: 12, weight: selected ? .semibold : .regular))
-                            }
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 5)
-                            .background(Capsule().fill(Color.white.opacity(selected ? 0.2 : 0.07)))
-                            .contentShape(Capsule())
-                        }
-                        .buttonStyle(.plain)
-                        .help(selected ? "Show the whole map again" : "Light up this feature's route and list its steps")
-                    }
-                }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 6)
+            ViewThatFits(in: .horizontal) {
+                chips
+                ScrollView(.horizontal, showsIndicators: false) { chips }
+                    // A horizontal scroll view otherwise grows to the full height and swallows clicks meant for the map.
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            // A horizontal scroll view otherwise grows to the full height and swallows clicks meant for the map.
-            .fixedSize(horizontal: false, vertical: true)
+        }
+
+        private var chips: some View {
+            HStack(spacing: 8) {
+                ForEach(Array((controller.map?.features ?? []).enumerated()), id: \.element.id) { index, feature in
+                    let color = Palette.feature(index)
+                    let selected = controller.selectedFeature == feature.id
+                    Button { controller.selectFeature(feature.id) } label: {
+                        HStack(spacing: 6) {
+                            Circle()
+                                .fill(Color(.sRGB, red: Self.srgb(color.x), green: Self.srgb(color.y), blue: Self.srgb(color.z)))
+                                .frame(width: 8, height: 8)
+                            Text(feature.name).font(.system(size: 12, weight: selected ? .semibold : .regular))
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(Capsule().fill(Color.white.opacity(selected ? 0.2 : 0.07)))
+                        .contentShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .help(selected ? "Show the whole map again" : "Light up this feature's route and list its steps")
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 6)
         }
 
         /// The palette is linear; SwiftUI colours are sRGB-encoded.
