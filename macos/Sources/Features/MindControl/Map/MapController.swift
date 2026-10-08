@@ -540,6 +540,9 @@ extension MindControl {
             case .pathTie:
                 openSource(subject)
                 return
+            case .unknownKey:
+                open(SourceLocation(file: subject, line: issue.line ?? 1))
+                return
             case .staleAnchor:
                 leaveFocus()
                 reveal(subject, minZoom: 1.3)

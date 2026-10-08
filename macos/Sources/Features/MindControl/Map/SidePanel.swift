@@ -78,7 +78,7 @@ extension MindControl {
                 ForEach(Array((report.densityWarnings + report.issues.filter { $0.kind != .density }).enumerated()), id: \.offset) { _, issue in
                     Button { controller.goToIssue(issue) } label: {
                         Text(issue.message)
-                            .foregroundColor(issue.kind == .density ? .yellow : .orange)
+                            .foregroundColor(issue.kind == .density || issue.kind == .unknownKey ? .yellow : .orange)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .contentShape(Rectangle())
                     }

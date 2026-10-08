@@ -133,5 +133,53 @@ struct FlowFileTests {
         #expect(FlowMap.Endpoint("a.b.c") == nil)
         #expect(FlowMap.Endpoint("Audio") == nil)
     }
+    // MARK: Unknown keys
+
+    /// A misspelt key is ignored, not an error: the map still loads, and the key is reported with its line.
+    @Test func aTopLevelTypoIsReportedWithItsLine() throws {
+        let json = "{\n  \"version\": 1,\n  \"systems\": [ { \"id\": \"a\", \"name\": \"A\" } ],\n  \"flow\": []\n}\n"
+        let map = try FlowFile.parse(Data(json.utf8)).get()
+        #expect(map.unknownKeys == [MindControl.FlowError(line: 4, message: #"Unknown key "flow" is ignored. Did you mean "flows"?"#)])
+    }
+
+    @Test func fieldTyposAreReportedWithTheirLines() throws {
+        let json = """
+        {
+          "version": 1,
+          "zones": [ { "id": "z", "name": "Z", "colour": "red" } ],
+          "systems": [
+            { "id": "a", "name": "A", "zone": "z",
+              "pathz": ["a/**"],
+              "parts": [ { "id": "p", "name": "P",
+                           "ancor": "P" } ] },
+            { "id": "b", "name": "B" }
+          ],
+          "flows": [
+            { "id": "f", "from": "a", "to": "b", "kind": "data", "carries": "x",
+              "whne": "now" }
+          ],
+          "features": [ { "id": "g", "name": "G", "route": ["f"], "notes": "x" } ]
+        }
+        """
+        let map = try FlowFile.parse(Data(json.utf8)).get()
+        #expect(map.unknownKeys.map(\.description) == [
+            #"Line 3: Unknown key "colour" in zone "z" is ignored."#,
+            #"Line 6: Unknown key "pathz" in system "a" is ignored. Did you mean "paths"?"#,
+            #"Line 8: Unknown key "ancor" in part "a.p" is ignored. Did you mean "anchor"?"#,
+            #"Line 13: Unknown key "whne" in flow "f" is ignored. Did you mean "when"?"#,
+            #"Line 15: Unknown key "notes" in feature "g" is ignored."#,
+        ])
+        #expect(map.flow("f")?.when == nil)
+    }
+
+    @Test func aKnownFileHasNoUnknownKeys() {
+        #expect(FlowFixtures.arca.unknownKeys.isEmpty)
+    }
+
+    /// When the file is invalid anyway, a misspelling is listed too: it's often the cause.
+    @Test func anInvalidFileListsItsUnknownKeysToo() {
+        let found = errors(#"{ "version": 1, "systems": [ { "id": "a", "nmae": "A" } ] }"#)
+        #expect(found.map(\.message) == [#"System "a" is missing "name"."#, #"Unknown key "nmae" in system "a" is ignored. Did you mean "name"?"#])
+    }
 }
 #endif

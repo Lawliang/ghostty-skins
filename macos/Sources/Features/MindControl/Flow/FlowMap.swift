@@ -75,6 +75,8 @@ extension MindControl {
         let systems: [System]
         let flows: [Flow]
         let features: [Feature]
+        /// Keys in the file that the format doesn't have, with their lines. They're ignored; Health lists them.
+        var unknownKeys: [FlowError] = []
 
         func system(_ id: String) -> System? { systems.first { $0.id == id } }
         func flow(_ id: String) -> Flow? { flows.first { $0.id == id } }

@@ -11,6 +11,8 @@ extension MindControl {
     struct HealthReport: Equatable, Sendable {
         enum IssueKind: String, Equatable, Sendable {
             case staleAnchor, staleVia, unverified, unknownReference, pathTie, density
+            /// A key the flow file's format doesn't have; ignored. The subject is the flow file.
+            case unknownKey
         }
 
         struct Issue: Equatable, Sendable {
@@ -18,6 +20,8 @@ extension MindControl {
             /// A part key ("audio.gate"), flow id, feature id, file path, or "map" for density.
             let subject: String
             let message: String
+            /// The flow file's line, for an issue about the file itself.
+            var line: Int? = nil
         }
 
         enum Age: Equatable, Sendable {
@@ -60,6 +64,9 @@ extension MindControl {
 
         static func run(map: FlowMap, snapshot: FlowSnapshot) -> HealthReport {
             var report = HealthReport()
+            for key in map.unknownKeys {
+                report.issues.append(.init(kind: .unknownKey, subject: FlowFile.relativePath, message: key.description, line: key.line))
+            }
             var contents: [String: String] = [:]
             func source(_ file: String) -> String? {
                 if let cached = contents[file] { return cached }

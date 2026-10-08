@@ -33,9 +33,12 @@ extension MindControl {
                 return .failure(FlowErrors(errors: [syntaxError(error as NSError, text: text)]))
             }
             var parser = Parser(locator: Locator(data))
-            let map = parser.map(root)
-            if let map, parser.errors.isEmpty { return .success(map) }
-            return .failure(FlowErrors(errors: parser.errors))
+            if var map = parser.map(root), parser.errors.isEmpty {
+                map.unknownKeys = parser.unknownKeys
+                return .success(map)
+            }
+            // A misspelt key is often why a required one is missing.
+            return .failure(FlowErrors(errors: parser.errors + parser.unknownKeys))
         }
 
         /// Newer Foundation accepts a trailing comma that strict JSON forbids; find the first one, outside strings.
@@ -94,6 +97,10 @@ extension MindControl.FlowFile {
         private var keyOffsets: [String: Int] = [:]
         private var itemOffsets: [String: [Int]] = [:]
         private var partOffsets: [Int: [Int]] = [:]
+        /// List key → item index → field key → offset.
+        private var fieldOffsets: [String: [Int: [String: Int]]] = [:]
+        /// System index → part index → field key → offset.
+        private var partFieldOffsets: [Int: [Int: [String: Int]]] = [:]
 
         init(_ data: Data) {
             bytes = Array(data)
@@ -104,10 +111,17 @@ extension MindControl.FlowFile {
                 guard byte(member.value) == UInt8(ascii: "[") else { continue }
                 let items = elements(at: member.value)
                 itemOffsets[member.key] = items
-                guard member.key == "systems" else { continue }
                 for (index, item) in items.enumerated() where byte(item) == UInt8(ascii: "{") {
-                    for field in members(at: item) where field.key == "parts" && byte(field.value) == UInt8(ascii: "[") {
-                        partOffsets[index] = elements(at: field.value)
+                    for field in members(at: item) {
+                        fieldOffsets[member.key, default: [:]][index, default: [:]][field.key] = field.keyStart
+                        guard member.key == "systems", field.key == "parts", byte(field.value) == UInt8(ascii: "[") else { continue }
+                        let parts = elements(at: field.value)
+                        partOffsets[index] = parts
+                        for (partIndex, part) in parts.enumerated() where byte(part) == UInt8(ascii: "{") {
+                            for partField in members(at: part) {
+                                partFieldOffsets[index, default: [:]][partIndex, default: [:]][partField.key] = partField.keyStart
+                            }
+                        }
                     }
                 }
             }
@@ -126,6 +140,16 @@ extension MindControl.FlowFile {
         /// The line where the `index`th part of the `system`th system starts.
         func line(ofPart index: Int, inSystem system: Int) -> Int? {
             partOffsets[system].flatMap { $0.indices.contains(index) ? lineNumber($0[index]) : nil }
+        }
+
+        /// The line of a field's key in the `index`th element of a top-level list.
+        func line(ofField field: String, item index: Int, in key: String) -> Int? {
+            fieldOffsets[key]?[index]?[field].map(lineNumber)
+        }
+
+        /// The line of a field's key in the `index`th part of the `system`th system.
+        func line(ofField field: String, part index: Int, inSystem system: Int) -> Int? {
+            partFieldOffsets[system]?[index]?[field].map(lineNumber)
         }
 
         /// 1-based, counting `\n` bytes, so CRLF files count correctly.
@@ -228,11 +252,68 @@ extension MindControl.FlowFile {
 
         let locator: Locator
         var errors: [MindControl.FlowError] = []
+        /// Keys the format doesn't have. Ignored, so they don't make the file invalid.
+        var unknownKeys: [MindControl.FlowError] = []
+
+        static let topKeys = ["version", "zones", "systems", "flows", "features"]
+        static let zoneKeys = ["id", "name"]
+        static let systemKeys = ["id", "name", "summary", "zone", "paths", "parts", "external"]
+        static let partKeys = ["id", "name", "anchor"]
+        static let flowKeys = ["id", "from", "to", "kind", "carries", "via", "when"]
+        static let featureKeys = ["id", "name", "route"]
 
         // MARK: Errors
 
         mutating func fail(_ message: String, line: Int? = nil) {
             errors.append(.init(line: line, message: message))
+        }
+
+        /// Notes each key of `object` not in `known`, in line order. `owner` names the object ("flow \"f\""),
+        /// nil for the top level.
+        mutating func noteUnknownKeys(_ object: [String: Any], known: [String], owner: String?, line: (String) -> Int?) {
+            let unknown = object.keys.filter { !known.contains($0) }
+                .map { (key: $0, line: line($0)) }
+                .sorted { ($0.line ?? 0, $0.key) < ($1.line ?? 0, $1.key) }
+            for (key, keyLine) in unknown {
+                var message = "Unknown key \"\(key)\"" + (owner.map { " in \($0)" } ?? "") + " is ignored."
+                if let guess = Self.nearest(key, in: known.filter { object[$0] == nil }) { message += " Did you mean \"\(guess)\"?" }
+                unknownKeys.append(.init(line: keyLine, message: message))
+            }
+        }
+
+        /// The known key a typo most likely meant: one edit away (two for longer keys), counting a swap of
+        /// neighbours as one edit.
+        static func nearest(_ key: String, in known: [String]) -> String? {
+            let limit = key.count >= 5 ? 2 : 1
+            var best: (key: String, distance: Int)?
+            for candidate in known {
+                let distance = editDistance(key.lowercased(), candidate)
+                if distance <= limit, distance < (best?.distance ?? .max) { best = (candidate, distance) }
+            }
+            return best?.key
+        }
+
+        /// Optimal string alignment distance.
+        static func editDistance(_ a: String, _ b: String) -> Int {
+            let a = Array(a), b = Array(b)
+            guard !a.isEmpty else { return b.count }
+            guard !b.isEmpty else { return a.count }
+            var d = Array(repeating: Array(repeating: 0, count: b.count + 1), count: a.count + 1)
+            for i in 0...a.count { d[i][0] = i }
+            for j in 0...b.count { d[0][j] = j }
+            for i in 1...a.count {
+                for j in 1...b.count {
+                    let cost = a[i - 1] == b[j - 1] ? 0 : 1
+                    d[i][j] = min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + cost)
+                    if i > 1, j > 1, a[i - 1] == b[j - 2], a[i - 2] == b[j - 1] { d[i][j] = min(d[i][j], d[i - 2][j - 2] + 1) }
+                }
+            }
+            return d[a.count][b.count]
+        }
+
+        /// How an object is named in a message: by its id, else by its place in its list.
+        static func owner(_ what: String, _ item: [String: Any], fallback: String) -> String {
+            (item["id"] as? String).map { "\(what) \"\($0)\"" } ?? fallback
         }
 
         // MARK: Field helpers
@@ -306,6 +387,9 @@ extension MindControl.FlowFile {
                 fail("Unsupported version \(version); this MindControl reads version 1.", line: locator.line(ofKey: "version"))
             }
 
+            let keys = self.locator
+            noteUnknownKeys(object, known: Self.topKeys, owner: nil, line: { keys.line(ofKey: $0) })
+
             let zones = parseZones(object)
             let zoneIDs = Set(zones.map(\.id))
             let systems = parseSystems(object, zoneIDs: zoneIDs)
@@ -327,6 +411,9 @@ extension MindControl.FlowFile {
             var zones: [FlowMap.Zone] = []
             for (index, item) in topLevel(object, "zones", required: false) {
                 let line = locator.line(ofItem: index, in: "zones")
+                let fields = self.locator
+                noteUnknownKeys(item, known: Self.zoneKeys, owner: Self.owner("zone", item, fallback: "zones[\(index)]"),
+                                line: { fields.line(ofField: $0, item: index, in: "zones") ?? line })
                 guard let id = id(item, what: "zone", label: "zones[\(index)]", line: line, seen: &seen),
                       let name = text(item, "name", required: true, owner: "Zone \"\(id)\"", line: line) else { continue }
                 zones.append(FlowMap.Zone(id: id, name: name))
@@ -339,6 +426,9 @@ extension MindControl.FlowFile {
             var systems: [FlowMap.System] = []
             for (index, item) in topLevel(object, "systems", required: true) {
                 let line = locator.line(ofItem: index, in: "systems")
+                let fields = self.locator
+                noteUnknownKeys(item, known: Self.systemKeys, owner: Self.owner("system", item, fallback: "systems[\(index)]"),
+                                line: { fields.line(ofField: $0, item: index, in: "systems") ?? line })
                 guard let id = id(item, what: "system", label: "systems[\(index)]", line: line, seen: &seen) else { continue }
                 let owner = "System \"\(id)\""
                 let name = text(item, "name", required: true, owner: owner, line: line)
@@ -357,10 +447,12 @@ extension MindControl.FlowFile {
                 }
                 var partIDs = Set<String>()
                 var parts: [FlowMap.Part] = []
-                let locator = self.locator
                 for (partIndex, part) in objects(item, "parts", required: false, listLine: line,
-                                                 itemLine: { locator.line(ofPart: $0, inSystem: index) }) {
-                    let partLine = locator.line(ofPart: partIndex, inSystem: index) ?? line
+                                                 itemLine: { fields.line(ofPart: $0, inSystem: index) }) {
+                    let partLine = fields.line(ofPart: partIndex, inSystem: index) ?? line
+                    let partOwner = (part["id"] as? String).map { "part \"\(id).\($0)\"" } ?? "\(owner) parts[\(partIndex)]"
+                    noteUnknownKeys(part, known: Self.partKeys, owner: partOwner,
+                                    line: { fields.line(ofField: $0, part: partIndex, inSystem: index) ?? partLine })
                     guard let partID = self.id(part, what: "part", label: "\(owner) parts[\(partIndex)]", line: partLine, seen: &partIDs),
                           let partName = text(part, "name", required: true, owner: "Part \"\(id).\(partID)\"", line: partLine) else { continue }
                     parts.append(FlowMap.Part(id: partID, name: partName,
@@ -380,6 +472,9 @@ extension MindControl.FlowFile {
             var flows: [FlowMap.Flow] = []
             for (index, item) in topLevel(object, "flows", required: false) {
                 let line = locator.line(ofItem: index, in: "flows")
+                let fields = self.locator
+                noteUnknownKeys(item, known: Self.flowKeys, owner: Self.owner("flow", item, fallback: "flows[\(index)]"),
+                                line: { fields.line(ofField: $0, item: index, in: "flows") ?? line })
                 guard let id = id(item, what: "flow", label: "flows[\(index)]", line: line, seen: &seen) else { continue }
                 let owner = "Flow \"\(id)\""
                 let from = endpoint(item, "from", owner: owner, line: line)
@@ -412,6 +507,9 @@ extension MindControl.FlowFile {
             var features: [FlowMap.Feature] = []
             for (index, item) in topLevel(object, "features", required: false) {
                 let line = locator.line(ofItem: index, in: "features")
+                let fields = self.locator
+                noteUnknownKeys(item, known: Self.featureKeys, owner: Self.owner("feature", item, fallback: "features[\(index)]"),
+                                line: { fields.line(ofField: $0, item: index, in: "features") ?? line })
                 guard let id = id(item, what: "feature", label: "features[\(index)]", line: line, seen: &seen) else { continue }
                 let owner = "Feature \"\(id)\""
                 let name = text(item, "name", required: true, owner: owner, line: line)

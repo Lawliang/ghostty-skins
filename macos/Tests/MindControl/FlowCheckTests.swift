@@ -193,6 +193,14 @@ struct FlowCheckTests {
         #expect(MindControl.ProjectPath.normalized(path) == expected)
     }
 
+    /// Unknown keys don't block the map; Health lists them, pointing at the flow file's line.
+    @Test func unknownKeysAreHealthIssues() {
+        let map = FlowFixtures.map("{\n  \"version\": 1,\n  \"systems\": [ { \"id\": \"a\", \"name\": \"A\" } ],\n  \"flow\": []\n}\n")
+        let report = check(map, [:])
+        #expect(report.issues == [HealthReport.Issue(kind: .unknownKey, subject: MindControl.FlowFile.relativePath,
+                                                    message: #"Line 4: Unknown key "flow" is ignored. Did you mean "flows"?"#, line: 4)])
+    }
+
     @Test(arguments: [("relay/src/pipe.ts", true), ("AudioCapture", false), ("Package.swift", true), ("README", false)])
     func fileAnchorDetection(anchor: String, isFile: Bool) {
         #expect(FlowCheck.isFileAnchor(anchor) == isFile)

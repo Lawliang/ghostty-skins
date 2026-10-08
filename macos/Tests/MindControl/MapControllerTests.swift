@@ -264,6 +264,15 @@ struct MapControllerTests {
         #expect(c.camera == MindControl.PanZoomCamera.fitting(c.baseLayout.bounds, in: c.viewSize))
     }
 
+    @Test func anUnknownKeyOpensTheFlowFileAtItsLine() {
+        let c = controller()
+        var opened: (URL, Int?)?
+        c.openFile = { opened = ($0, $1) }
+        c.goToIssue(.init(kind: .unknownKey, subject: MindControl.FlowFile.relativePath, message: "", line: 7))
+        #expect(opened?.0.path == "/tmp/mc-ctl/.mindcontrol/flow.json")
+        #expect(opened?.1 == 7)
+    }
+
     @Test func goingToAnIssueLeavesFocus() {
         let c = controller()
         c.enterFocus(.system("agent"))
