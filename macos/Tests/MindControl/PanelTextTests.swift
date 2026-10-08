@@ -56,6 +56,19 @@ struct PanelTextTests {
         #expect(!Panel.canRunClaude(in: .idle))
         #expect(!Panel.canRunClaude(in: .failed("x")))
     }
+    /// With a map, a blocked Refresh says why beside the button, not only in its tooltip.
+    @MainActor
+    @Test func aBlockedRefreshShowsItsReason() {
+        let open = MindControl.Model.Project(root: URL(fileURLWithPath: "/tmp/arca"), name: "arca", claudeBlockReason: nil)
+        let home = MindControl.Model.Project(root: URL(fileURLWithPath: "/Users/me"), name: "me", claudeBlockReason: "This is your home folder.")
+        let loaded = MindControl.Model.Loaded(map: FlowFixtures.arca, report: .init(), saved: [:], generation: 1)
+        #expect(Panel.refreshBlockedCaption(in: .ready(home, loaded)) == "This is your home folder.")
+        #expect(Panel.refreshBlockedCaption(in: .ready(open, loaded)) == nil)
+        // The empty state shows its own reason under Draft.
+        #expect(Panel.refreshBlockedCaption(in: .noFlowFile(home)) == nil)
+        #expect(Panel.refreshBlockedCaption(in: .loading(home)) == nil)
+    }
+
     /// The copy sheet shows plain text, so its copy must not lean on Markdown.
     @Test func missingClaudeCopyIsPlainText() {
         let detail = Panel.missingClaudeDetail(projectName: "arca")

@@ -113,8 +113,8 @@ Once a map exists, **Refresh with Claude** in the header does the same with a se
 reads the commits since `flow.json` was last committed and updates the map to match, keeping ids and
 leaving `layout.json` alone.
 
-Both buttons are off when the project is your home folder, `/`, or outside git; the panel says why and
-offers **Change…**. If `claude` isn't on your shell's PATH, MindControl shows the prompt with a
+Both buttons are off when the project is your home folder, `/`, or outside git. The panel says why in
+orange (under Draft, or beside Refresh in the header) and offers **Change…**. If `claude` isn't on your shell's PATH, MindControl shows the prompt with a
 **Copy Prompt** button instead.
 
 ## Where the code lives

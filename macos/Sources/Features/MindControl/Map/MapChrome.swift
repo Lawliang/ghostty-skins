@@ -46,6 +46,17 @@ extension MindControl {
                         HStack(spacing: 10) { badges(loaded.report, compact: false) }
                         HStack(spacing: 10) { badges(loaded.report, compact: true) }
                     }
+                    // Change… is at the start of this bar.
+                    if let reason = Panel.refreshBlockedCaption(in: model.state) {
+                        Text(reason)
+                            .font(.system(size: 11))
+                            .foregroundColor(.orange)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                            .frame(maxWidth: 260, alignment: .trailing)
+                            .layoutPriority(-1)
+                            .help("\(reason) Use Change… to map another folder.")
+                    }
                     Button("Refresh with Claude", action: onRefresh)
                         .disabled(!canRunClaude)
                         .help(project.claudeBlockReason ?? "Update the map from what changed in the code")

@@ -269,6 +269,12 @@ extension MindControl {
             "No flow map for \(project.name) yet"
         }
 
+        /// Why Refresh is off, shown beside it in the header. The empty state shows its own reason under Draft.
+        static func refreshBlockedCaption(in state: Model.State) -> String? {
+            if case .ready(let project, _) = state { return project.claudeBlockReason }
+            return nil
+        }
+
         /// Draft (no flow file) and Refresh (a map) need a checked folder that nothing blocks. While loading, a
         /// nil reason means "not checked yet", not "allowed".
         static func canRunClaude(in state: Model.State) -> Bool {
