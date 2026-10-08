@@ -5524,7 +5524,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
     - read-only state: `root`, `map`, `report`, `saved`, `baseLayout`, `layout`, `curves`
     - `camera` (get/set), `viewSize`, `style: SceneStyle`, `sidePanel: SidePanelContent`, `breadcrumb: [String]`
     - `show(_:root:)`, `attach(_:)`, `refresh()`, `tick(_:)`, `fit(animated:)`
-    - `selectFeature(_:)`, `enterFocus()`, `enterFocus(_:)`, `exitFocus()`, `escape() -> Bool`, `beginSearch(with:)`, `navigate(to:)`, `goToStep(_ flowID:)`, `open(_ location: SourceLocation)`, `openSource(_ path: String)`
+    - `selectFeature(_:)`, `enterFocus()`, `enterFocus(_:)`, `exitFocus()`, `escape() -> Bool`, `beginSearch(with:)`, `navigate(to:)`, `goToStep(_ flowID:)`, `goToIssue(_:)`, `open(_ location: SourceLocation)`, `openSource(_ path: String)`
     - `hit(at:)`, `click(at:)`, `doubleClick(at:)`, `zoom(by:about:)`, `pan(by:)`, `canDrag(_:)`, `drag(system:byScreen:)`, `endDrag(_:)`, `labels() -> [PlacedLabel]`
     - `static blend(from:to:t:) -> (MapLayout, [String: Float])`
   - `MindControl.FlowMetalView(renderer:controller:)` (`NSViewRepresentable`)
@@ -5664,6 +5664,15 @@ struct MapControllerTests {
         c.doubleClick(at: c.camera.toScreen(mid, viewSize: c.viewSize))
         #expect(opened?.0.path.hasSuffix("app/Sources/Audio/AudioCapture.swift") == true)
         #expect(opened?.1 == 4)
+    }
+
+    @Test func clickingAHealthIssueGoesToItsSubject() {
+        let c = controller()
+        c.mode = .health
+        c.goToIssue(.init(kind: .staleAnchor, subject: "audio.gate", message: "SpeechGate: type missing"))
+        #expect(c.selection == .box("audio.gate"))
+        c.goToIssue(.init(kind: .staleVia, subject: "pcm", message: "pcm: sendAudio missing"))
+        #expect(c.selection == .arrow("flow:pcm"))
     }
 
     @Test func reloadKeepsFocusAndDropsVanishedSelection() {
@@ -5821,7 +5830,8 @@ extension MindControl {
             }
             if let current = selection, !exists(current) { selection = nil }
             refresh()
-            if firstShow { fit(animated: false) }
+            // The spec fits the whole map on open and on every reload; focus views keep their own framing.
+            if focus == nil { fit(animated: !firstShow) }
         }
 
         func attach(_ renderer: Renderer) {
@@ -6034,6 +6044,18 @@ extension MindControl {
             guard let curve = curves[id] else { return }
             selection = .arrow(id)
             move(to: PanZoomCamera(center: curve.mid, zoom: max(camera.zoom, layout.fixedLevel ? camera.zoom : 1.1)), animated: true)
+            refresh()
+        }
+
+        /// Health view: move to whatever an issue is about.
+        func goToIssue(_ issue: HealthReport.Issue) {
+            if baseLayout.box(issue.subject) != nil {
+                reveal(issue.subject, minZoom: issue.subject.contains(".") ? 1.3 : 0.6)
+            } else if map?.flow(issue.subject) != nil {
+                goToStep(issue.subject)
+            } else if report.unmapped.contains(issue.subject) || report.owners[issue.subject] != nil {
+                openSource(issue.subject)
+            }
             refresh()
         }
 
@@ -6883,8 +6905,13 @@ extension MindControl {
             case .health(let report):
                 Text(Panel.healthText(report)).font(.system(size: 15, weight: .semibold))
                 if let age = Panel.ageText(report.age) { Text(age).foregroundColor(.secondary) }
-                ForEach(Array(report.issues.enumerated()), id: \.offset) { _, issue in
-                    Text(issue.message).foregroundColor(issue.kind == .density ? .yellow : .orange)
+                // Density warnings first, then everything else; each issue moves the view to its subject.
+                ForEach(Array((report.densityWarnings + report.issues.filter { $0.kind != .density }).enumerated()), id: \.offset) { _, issue in
+                    Button { controller.goToIssue(issue) } label: {
+                        Text(issue.message).foregroundColor(issue.kind == .density ? .yellow : .orange)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .buttonStyle(.plain)
                 }
                 if !report.unmapped.isEmpty {
                     Text("\(report.unmapped.count) files belong to no system").font(.system(size: 11, weight: .semibold)).foregroundColor(.secondary)
