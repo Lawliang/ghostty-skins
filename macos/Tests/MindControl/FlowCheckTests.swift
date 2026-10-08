@@ -166,6 +166,33 @@ struct FlowCheckTests {
         #expect(warnings.contains { $0.contains("61 flows") })
     }
 
+    @Test func anAnchorOutsideTheProjectIsStale() {
+        let map = FlowFixtures.map(#"""
+        { "version": 1,
+          "systems": [ { "id": "core", "name": "Core", "paths": ["core/**"],
+                         "parts": [ { "id": "up", "name": "Up", "anchor": "../../bin/x" },
+                                    { "id": "abs", "name": "Abs", "anchor": "/etc/hosts" },
+                                    { "id": "ok", "name": "Ok", "anchor": "core/./a/../Main.swift" } ] } ] }
+        """#)
+        // A snapshot that would read anything it's asked for.
+        let snapshot = MindControl.FlowSnapshot(root: URL(fileURLWithPath: "/tmp/mc-check"), flowData: nil, layoutData: nil,
+                                                sourceFiles: ["core/Main.swift"], read: { _ in "text" })
+        let report = FlowCheck.run(map: map, snapshot: snapshot)
+        #expect(report.staleParts == ["core.up", "core.abs"])
+        #expect(report.anchorFiles["core.up"] == nil)
+        #expect(report.anchorFiles["core.abs"] == nil)
+        #expect(report.anchorFiles["core.ok"] == "core/Main.swift")
+        #expect(report.issues.first { $0.subject == "core.up" }?.message == "Up: file ../../bin/x is outside the project.")
+    }
+
+    @Test(arguments: [
+        ("a/b.swift", "a/b.swift"), ("a/./b/../c.swift", "a/c.swift"), ("a//b", "a/b"),
+        ("../x", nil), ("a/../../x", nil), ("/etc/hosts", nil), ("..", nil), ("a/..", nil), ("", nil),
+    ] as [(String, String?)])
+    func projectPathsStayInsideTheRoot(path: String, expected: String?) {
+        #expect(MindControl.ProjectPath.normalized(path) == expected)
+    }
+
     @Test(arguments: [("relay/src/pipe.ts", true), ("AudioCapture", false), ("Package.swift", true), ("README", false)])
     func fileAnchorDetection(anchor: String, isFile: Bool) {
         #expect(FlowCheck.isFileAnchor(anchor) == isFile)

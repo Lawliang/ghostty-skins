@@ -50,7 +50,8 @@ Rules:
 - When two systems' patterns match the same file, the one with the longer fixed text before its first
   wildcard wins. An equal tie is an error, and that file counts as unmapped.
 - A part has `id`, `name` and an optional `anchor`: a Swift type declared in the system's own files, or
-  a file path (anything with `/` or an extension).
+  a file path (anything with `/` or an extension). A path that leads outside the project (`../`, or
+  starting with `/`) is stale.
 - A flow has `id`, `from`, `to`, `kind` (`data` when something is carried, `control` when one side
   triggers the other) and `carries`. `via` names the call where the hand-off happens; MindControl looks
   for it as a whole word in the `from` system's files (the `to` system's when `from` is external).
@@ -94,6 +95,9 @@ broken rule shows a list of errors with line numbers instead of the map.
   to move it; its position is saved to `layout.json`.
 - **Double-click** a part to open its anchor file, an arrow to open the file at its `via` line, or a
   system to focus it.
+- **Opening files.** A plain text or source file opens in its default app (in Xcode, at the line). An
+  executable, a script that would run (`.command`, `.terminal`, …) or anything that isn't text opens in
+  your source code editor instead, or is shown in Finder. Nothing outside the project is opened.
 - **Esc** clears the search, then leaves Focus, then clears the feature or selection, then closes
   MindControl.
 

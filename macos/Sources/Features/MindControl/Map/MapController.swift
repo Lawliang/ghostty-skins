@@ -565,14 +565,15 @@ extension MindControl {
             return baseLayout.box(endpoint.system) != nil ? endpoint.system : nil
         }
 
+        /// Opens a file in the project. A path leading outside the root (`..`, absolute, a symlink out) is ignored.
         func open(_ location: SourceLocation) {
-            guard let root else { return }
-            openFile(root.appendingPathComponent(location.file), location.line)
+            guard let root, let url = ProjectPath.url(for: location.file, in: root) else { return }
+            openFile(url, location.line)
         }
 
         func openSource(_ path: String) {
-            guard let root else { return }
-            openFile(root.appendingPathComponent(path), nil)
+            guard let root, let url = ProjectPath.url(for: path, in: root) else { return }
+            openFile(url, nil)
         }
 
         // MARK: Pointer input (view points, top-left origin)

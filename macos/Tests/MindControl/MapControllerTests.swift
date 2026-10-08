@@ -131,6 +131,32 @@ struct MapControllerTests {
         #expect(opened?.1 == 4)
     }
 
+    @Test func nothingOutsideTheProjectIsOpened() throws {
+        let c = controller()
+        var opened: [URL] = []
+        c.openFile = { url, _ in opened.append(url) }
+        c.openSource("../../bin/x")
+        c.openSource("/etc/hosts")
+        c.open(MindControl.SourceLocation(file: "app/../../x.swift", line: 3))
+        #expect(opened.isEmpty)
+        c.openSource("app/./Sources/../Sources/Audio/AudioCapture.swift")
+        #expect(opened.map(\.path) == ["/tmp/mc-ctl/app/Sources/Audio/AudioCapture.swift"])
+    }
+
+    @Test func aSymlinkOutOfTheProjectIsNotOpened() throws {
+        let project = try TempProject()
+        try project.write("app/Real.swift", "let x = 1\n")
+        try FileManager.default.createSymbolicLink(atPath: project.url.appendingPathComponent("app/Link.swift").path,
+                                                   withDestinationPath: "/etc/hosts")
+        let c = controller(root: project.url)
+        var opened: [URL] = []
+        c.openFile = { url, _ in opened.append(url) }
+        c.openSource("app/Link.swift")
+        #expect(opened.isEmpty)
+        c.openSource("app/Real.swift")
+        #expect(opened.map(\.lastPathComponent) == ["Real.swift"])
+    }
+
     @Test func clickingAHealthIssueGoesToItsSubject() {
         let c = controller()
         c.mode = .health

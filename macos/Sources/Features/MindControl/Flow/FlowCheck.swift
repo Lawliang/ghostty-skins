@@ -105,8 +105,13 @@ extension MindControl {
                     guard let anchor = part.anchor else { continue }
                     let key = "\(system.id).\(part.id)"
                     if isFileAnchor(anchor) {
-                        if sourceSet.contains(anchor) || snapshot.read(anchor) != nil {
-                            report.anchorFiles[key] = anchor
+                        guard let path = ProjectPath.normalized(anchor) else {
+                            report.staleParts.insert(key)
+                            report.issues.append(.init(kind: .staleAnchor, subject: key, message: "\(part.name): file \(anchor) is outside the project."))
+                            continue
+                        }
+                        if sourceSet.contains(path) || snapshot.read(path) != nil {
+                            report.anchorFiles[key] = path
                         } else {
                             report.staleParts.insert(key)
                             report.issues.append(.init(kind: .staleAnchor, subject: key, message: "\(part.name): file \(anchor) not found."))
