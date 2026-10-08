@@ -182,7 +182,8 @@ extension MindControl {
                 guard let text = source(file) else { continue }
                 let ns = text as NSString
                 guard let match = regex.firstMatch(in: text, range: NSRange(location: 0, length: ns.length)) else { continue }
-                let line = 1 + ns.substring(to: match.range.location).filter { $0 == "\n" }.count
+                // Count "\n" code units: a Character-wise count misses "\r\n", which Swift treats as one Character.
+                let line = 1 + ns.substring(to: match.range.location).utf16.filter { $0 == 0x0A }.count
                 return SourceLocation(file: file, line: line)
             }
             return nil

@@ -59,6 +59,17 @@ struct FlowCheckTests {
         #expect(report.viaLocations["push"] == MindControl.SourceLocation(file: "relay/src/pipe.ts", line: 1))
     }
 
+    @Test func viaLineCountsCRLFLineEndings() {
+        let map = FlowFixtures.map(#"""
+        { "version": 1,
+          "systems": [ { "id": "relay", "name": "Relay", "paths": ["relay/**"] }, { "id": "apns", "name": "APNs", "external": true } ],
+          "flows": [ { "id": "push", "from": "relay", "to": "apns", "kind": "data", "carries": "alert", "via": "push" } ] }
+        """#)
+        let crlf = "// relay\r\n\r\nfunc push() {}\r\n"
+        let report = check(map, ["relay/pipe.swift": crlf])
+        #expect(report.viaLocations["push"] == MindControl.SourceLocation(file: "relay/pipe.swift", line: 3))
+    }
+
     @Test func missingViaIsStaleAndNoViaIsUnverified() {
         var files = FlowFixtures.arcaSources
         files["app/Sources/Audio/AudioCapture.swift"] = "final class AudioCapture {\n    func beginTransmission() {}\n}\n"
