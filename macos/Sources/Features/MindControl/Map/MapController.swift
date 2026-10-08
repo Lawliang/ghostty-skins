@@ -64,10 +64,10 @@ extension MindControl {
         @Published var mode: SceneStyle.Mode = .map { didSet { refresh() } }
         @Published var showControl = true { didSet { refresh() } }
         @Published private(set) var selectedFeature: String? { didSet { updateFocusTarget() } }
-        /// Setting it (to anything) ends a feature step's highlight.
+        /// Setting it (to anything) ends a highlight.
         @Published private(set) var selection: Selection? {
             didSet {
-                stepHighlight = nil
+                highlight = nil
                 updateFocusTarget()
             }
         }
@@ -113,9 +113,9 @@ extension MindControl {
         var searchDelay: UInt64 = MapController.searchPause
 
         private var fade: [String: Float] = [:]
-        /// The arrow of the selected feature's step last clicked in the side panel. Drawn as selected without
-        /// becoming the selection, so the panel keeps listing the feature's steps.
-        private var stepHighlight: String?
+        /// A box or arrow drawn as selected without becoming the selection, so the side panel keeps its list:
+        /// the selected feature's step last clicked there, or the subject of the Health issue last clicked.
+        private var highlight: String?
         private var transition: Transition?
         private var pulse: (id: String, until: CFTimeInterval)?
         private var searchIndex: FlowSearch?
@@ -186,7 +186,7 @@ extension MindControl {
                 layout = baseLayout
             }
             if let current = selection, !exists(current) { selection = nil }
-            if let step = stepHighlight, !exists(.arrow(step)) { stepHighlight = nil }
+            if let id = highlight, !exists(.arrow(id)), !exists(.box(id)) { highlight = nil }
             updateFocusTarget()
             refresh()
             // The spec fits the whole map on open and on every reload; focus views keep their own framing.
@@ -225,7 +225,7 @@ extension MindControl {
             }
             switch selection {
             case .box(let id), .arrow(let id): style.selected = id
-            case nil: style.selected = stepHighlight
+            case nil: style.selected = highlight
             }
             style.pulsed = pulse?.id
             style.fade = fade
@@ -292,7 +292,7 @@ extension MindControl {
         func selectFeature(_ id: String?) {
             selectedFeature = id == selectedFeature ? nil : id
             if selectedFeature != nil { selection = nil }
-            stepHighlight = nil
+            highlight = nil
             refresh()
         }
 
@@ -370,7 +370,8 @@ extension MindControl {
                                     routes: ArrowRouter.plan(for: next).routes)
         }
 
-        /// Esc: clear search, then leave focus, then clear the feature or selection. False means close MindControl.
+        /// Esc: clear search, then leave focus, then clear the feature, selection or highlight. False means close
+        /// MindControl.
         func escape() -> Bool {
             if !query.isEmpty {
                 query = ""
@@ -380,9 +381,10 @@ extension MindControl {
                 exitFocus()
                 return true
             }
-            if selectedFeature != nil || selection != nil {
+            if selectedFeature != nil || selection != nil || highlight != nil {
                 selectedFeature = nil
                 selection = nil
+                highlight = nil
                 refresh()
                 return true
             }
@@ -393,7 +395,7 @@ extension MindControl {
         /// switch. A selected box or highlighted step would otherwise keep the side panel.
         func showHealth() {
             selection = nil
-            stepHighlight = nil
+            highlight = nil
             // Its didSet redraws, even when already in Health.
             mode = .health
         }
@@ -486,10 +488,15 @@ extension MindControl {
             if !rect.isNull { move(to: PanZoomCamera.fitting(rect, in: viewSize), animated: true) }
         }
 
-        /// Select and pulse a box on the main map, and move to it.
-        private func reveal(_ id: String, minZoom: CGFloat) {
+        /// Select (or only highlight) and pulse a box on the main map, and move to it.
+        private func reveal(_ id: String, minZoom: CGFloat, highlightOnly: Bool = false) {
             guard let box = baseLayout.box(id) else { return }
-            selection = .box(id)
+            if highlightOnly {
+                selection = nil
+                highlight = id
+            } else {
+                selection = .box(id)
+            }
             pulse = (id, CACurrentMediaTime() + Self.pulseDuration)
             move(to: PanZoomCamera(center: CGPoint(x: box.rect.midX, y: box.rect.midY), zoom: max(camera.zoom, minZoom)), animated: true)
         }
@@ -497,17 +504,17 @@ extension MindControl {
         /// A side panel step was clicked: move to that flow's arrow. A step on the selected feature's route is
         /// highlighted and the panel keeps the feature's steps; any other flow becomes the selection. A flow the
         /// focus view doesn't draw is shown on the main map. A hidden control arrow is shown. Zooms past the
-        /// systems-to-parts cross-fade so the part-level arrow shows in full.
-        func goToStep(_ flowID: String) {
+        /// systems-to-parts cross-fade so the part-level arrow shows in full. `highlightOnly` never selects.
+        func goToStep(_ flowID: String, highlightOnly: Bool = false) {
             let id = "flow:\(flowID)"
             if focus != nil, !(transition?.to ?? layout).arrows.contains(where: { $0.id == id }) { exitFocus() }
             // Mid-transition, aim at where the arrow will be, not where it is.
             let target = transition?.to ?? layout
             guard let curve = transition == nil ? curves[id] : ArrowRouter.curves(for: target)[id],
                   let arrow = target.arrows.first(where: { $0.id == id }) else { return }
-            if let feature = selectedFeature.flatMap({ map?.feature($0) }), feature.route.contains(flowID) {
+            if highlightOnly || selectedFeature.flatMap({ map?.feature($0) })?.route.contains(flowID) == true {
                 selection = nil
-                stepHighlight = id
+                highlight = id
             } else {
                 selection = .arrow(id)
             }
@@ -518,9 +525,13 @@ extension MindControl {
         }
 
         /// Health view: move to whatever an issue is about. A subject is a bare id, unique only within its own
-        /// list (a flow and a system may share one), so the issue's kind says which list it's from.
+        /// list (a flow and a system may share one), so the issue's kind says which list it's from. In Health the
+        /// subject is highlighted, not selected, so the side panel keeps the issue list.
         func goToIssue(_ issue: HealthReport.Issue) {
             let subject = issue.subject
+            let keepList = mode == .health
+            func reveal(_ id: String, minZoom: CGFloat) { self.reveal(id, minZoom: minZoom, highlightOnly: keepList) }
+            func goToStep(_ id: String) { self.goToStep(id, highlightOnly: keepList) }
             switch issue.kind {
             case .pathTie:
                 openSource(subject)

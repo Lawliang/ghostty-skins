@@ -70,7 +70,7 @@ broken rule shows a list of errors with line numbers instead of the map.
 
 - **Map / Health.** Map shows how the app works. Health greys the map and colours only problems: stale
   in amber, unverified as faint dashes, errors in red. The side panel lists every issue and the unmapped
-  files; click one to go to it. The header's "Map healthy" / "N issues", unmapped count and density
+  files; click one to go to it. The map moves to it and highlights it, and the list stays. The header's "Map healthy" / "N issues", unmapped count and density
   warning all open Health.
 - **Zoom levels.** Farthest out you see zones and one thick arrow per direction between them. Closer,
   systems appear with their names and summaries, and flows between two systems merge into one arrow.

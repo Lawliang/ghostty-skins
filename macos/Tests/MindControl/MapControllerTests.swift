@@ -161,9 +161,29 @@ struct MapControllerTests {
         let c = controller()
         c.mode = .health
         c.goToIssue(.init(kind: .staleAnchor, subject: "audio.gate", message: "SpeechGate: type missing"))
-        #expect(c.selection == .box("audio.gate"))
+        #expect(c.style.selected == "audio.gate")
         c.goToIssue(.init(kind: .staleVia, subject: "pcm", message: "pcm: sendAudio missing"))
-        #expect(c.selection == .arrow("flow:pcm"))
+        #expect(c.style.selected == "flow:pcm")
+    }
+
+    /// The subject is highlighted, not selected: a selection would swap the issue list for its details.
+    @Test func walkingHealthIssuesKeepsTheIssueList() {
+        let c = controller()
+        c.showHealth()
+        let issues: [(MindControl.HealthReport.IssueKind, String, String)] = [
+            (.staleAnchor, "audio.gate", "audio.gate"), (.staleVia, "pcm", "flow:pcm"),
+            (.unverified, "send", "flow:send"), (.density, "audio", "audio"),
+        ]
+        for (kind, subject, drawn) in issues {
+            c.goToIssue(.init(kind: kind, subject: subject, message: ""))
+            if case .health = c.sidePanel {} else { Issue.record("\(kind): \(c.sidePanel)") }
+            #expect(c.selection == nil)
+            #expect(c.style.selected == drawn)
+        }
+        // Esc clears the highlight before it closes anything.
+        #expect(c.escape())
+        #expect(c.style.selected == nil)
+        #expect(!c.escape())
     }
 
     @Test func reloadKeepsFocusAndDropsVanishedSelection() {
@@ -213,22 +233,24 @@ struct MapControllerTests {
 
     @Test func anIssueAboutAFlowGoesToTheFlowEvenWhenASystemSharesItsID() {
         let c = controller(showing: FlowFixtures.map(Self.clashJSON))
+        c.showHealth()
         #expect(c.report.issues.contains { $0.kind == .unverified && $0.subject == "relay" })
         c.goToIssue(.init(kind: .unverified, subject: "relay", message: ""))
-        #expect(c.selection == .arrow("flow:relay"))
+        #expect(c.style.selected == "flow:relay")
         c.goToIssue(.init(kind: .density, subject: "relay", message: ""))
-        #expect(c.selection == .box("relay"))
+        #expect(c.style.selected == "relay")
     }
 
     @Test func anUnknownReferenceGoesToTheFeatureUnlessItsFlowIsTheBrokenOne() {
         let c = controller(showing: FlowFixtures.map(Self.clashJSON))
+        c.showHealth()
         // Flow `dup` is fine; feature `dup` names an unknown flow.
         c.goToIssue(.init(kind: .unknownReference, subject: "dup", message: ""))
         #expect(c.selectedFeature == "dup")
         #expect(c.selection == nil)
         // Flow `lost` is broken and not drawn: go to the end that exists.
         c.goToIssue(.init(kind: .unknownReference, subject: "lost", message: ""))
-        #expect(c.selection == .box("src"))
+        #expect(c.style.selected == "src")
     }
 
     @Test func aPathTieOpensTheFileAndMapDensityFitsTheMap() {
@@ -245,10 +267,11 @@ struct MapControllerTests {
     @Test func goingToAnIssueLeavesFocus() {
         let c = controller()
         c.enterFocus(.system("agent"))
+        c.showHealth()
         c.goToIssue(.init(kind: .staleAnchor, subject: "audio.gate", message: ""))
         #expect(c.focus == nil)
         #expect(c.layout == c.baseLayout)
-        #expect(c.selection == .box("audio.gate"))
+        #expect(c.style.selected == "audio.gate")
     }
 
     @Test func aStepOutsideTheFocusLeavesFocusForTheMap() {
