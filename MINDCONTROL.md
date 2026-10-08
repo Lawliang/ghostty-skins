@@ -61,21 +61,22 @@ Rules:
 - Keep it small: past 20 systems, 8 parts in one system, or 60 flows, MindControl warns. Nothing is blocked.
 
 On every open MindControl checks the file against the code. An anchor or `via` it can't find marks that
-part or arrow **stale**. A flow with no `via` is **unverified**. Unknown systems, parts or flows are
-errors; the rest still draws. Source files no system owns are **unmapped**. A key the format doesn't have (`"flow"`, `"whne"`) is
-ignored, not an error: Health lists it with its line and, for a near miss, the key you probably meant,
-and clicking it opens `flow.json` at that line. In git, the header shows how
-many commits have touched the systems' paths since `flow.json` was last committed (nothing when no
-system has paths or git can't count them). Invalid JSON or a
-broken rule shows a list of errors with line numbers instead of the map. A valid file with no systems
-says "This map has no systems yet."
+part or arrow **stale**. A flow with no `via` is **unverified**. A flow naming an unknown system or part
+isn't drawn, and a feature naming an unknown flow lights the rest of its route; both are listed in
+Health. Source files no system owns are **unmapped**. A key the format doesn't have (`"flow"`, `"whne"`)
+is ignored, not an error: Health lists it with its line and, for a near miss, the key you probably
+meant, and clicking it opens `flow.json` at that line. In git, the header shows how many commits have
+touched the systems' paths since `flow.json` was last committed (nothing when no system has paths or
+git can't count them). Invalid JSON or a broken rule shows a list of errors with line numbers instead of
+the map. A valid file with no systems says "This map has no systems yet."
 
 ## Views and controls
 
 - **Map / Health.** Map shows how the app works. Health greys the map and colours only problems: stale
-  in amber, unverified as faint dashes, errors in red. The side panel lists every issue and the unmapped
-  files; click one to go to it. The map moves to it and highlights it, and the list stays. The header's "Map healthy" / "N issues", unmapped count and density
-  warning all open Health.
+  parts (and their systems) and stale arrows in amber, unverified flows as faint dashes. The side panel
+  lists every issue, problems in orange and warnings (density, unknown keys) in yellow, then the
+  unmapped files. Click an issue to go to it: the map moves to it and highlights it, and the list
+  stays. Click a file to open it. The header's "Map healthy" / "N issues", unmapped count and density warning all open Health.
 - **Zoom levels.** Farthest out you see zones and one thick arrow per direction between them (on a map
   with no zones, or no flows between them, systems keep their names and arrows instead). Closer,
   systems appear with their names and summaries, and flows between two systems merge into one arrow.
