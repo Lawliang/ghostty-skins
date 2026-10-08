@@ -677,6 +677,11 @@ extension Ghostty {
             let location = convert(event.locationInWindow, from: nil)
             guard hitTest(location) == self else { return event }
 
+            // Lostty: and nothing may be layered over it there. The check above only looks inside this view, so
+            // a view on top (the MindControl panel, the Skins picker) would otherwise lose its click and hand
+            // focus back to the hidden terminal.
+            guard Self.clickLands(on: self, atWindowPoint: event.locationInWindow) else { return event }
+
             // We always assume that we're resetting our mouse suppression
             // unless we see the specific scenario below to set it.
             suppressNextLeftMouseUp = false
@@ -703,6 +708,18 @@ extension Ghostty {
             // focus the window and dispatch events. If you return nil here then
             // nobody gets a windowDidBecomeKey event and so on.
             return event
+        }
+
+        /// Whether AppKit would deliver a click at `point` (window coordinates) to `view` or one of its subviews:
+        /// the window's own hit test, from its top view, which sees every view layered over `view`.
+        static func clickLands(on view: NSView, atWindowPoint point: NSPoint) -> Bool {
+            guard let content = view.window?.contentView else { return false }
+            // The frame view when there is one, as the window itself hit-tests; a view's hitTest takes its
+            // superview's coordinates, and a view without one takes the window's.
+            let root = content.superview ?? content
+            let inParent = root.superview.map { $0.convert(point, from: nil) } ?? point
+            guard let hit = root.hitTest(inParent) else { return false }
+            return hit === view || hit.isDescendant(of: view)
         }
 
         private func localEventKeyUp(_ event: NSEvent) -> NSEvent? {
