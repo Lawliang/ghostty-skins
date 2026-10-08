@@ -94,6 +94,13 @@ struct ClaudeLauncherTests {
         }
     }
 
+    /// FeatureSteps groups only consecutive steps that share a "when".
+    @Test func promptsKeepAConditionsFlowsTogetherInARoute() {
+        for prompt in [ClaudePrompts.draft(projectName: "arca"), ClaudePrompts.refresh(projectName: "arca")] {
+            #expect(prompt.contains("Flows with the same \"when\" sit next to each other in a route"))
+        }
+    }
+
     /// The example Claude copies must itself be a valid, healthy flow file.
     @Test func promptExampleParsesAndPassesTheChecks() throws {
         let rules = ClaudePrompts.formatAndRules

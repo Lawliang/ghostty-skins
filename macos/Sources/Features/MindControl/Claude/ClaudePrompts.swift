@@ -127,7 +127,8 @@ extension MindControl {
         "via" unless both ends are external; a flow without one is drawn as unverified.
         - "when" is a short condition for flows that only happen sometimes ("words heard"). Give each outcome of a \
         decision its own condition ("words heard", "nothing heard"). Flows of the same outcome use exactly the same \
-        text, and together form one branch of a feature's route.
+        text, and together form one branch of a feature's route. Flows with the same "when" sit next to each other in a \
+        route: MindControl groups a route's steps by condition only where they follow one another.
         - "features" are the main things the product does, each a "route" listing flow ids from this file in the order \
         they happen.
         - Keep the map small: at most \(FlowCheck.maxSystems) systems, at most \(FlowCheck.maxPartsPerSystem) parts in a \
