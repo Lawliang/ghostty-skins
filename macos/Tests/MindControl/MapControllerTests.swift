@@ -613,6 +613,19 @@ struct MapControllerTests {
         #expect(c.focusTarget == nil)
     }
 
+    /// The step's highlight goes with its feature, so Esc has nothing left to clear and closes.
+    @Test func aReloadThatDropsTheFeatureClearsItsStepHighlight() {
+        let c = controller()
+        c.selectFeature("speech")
+        c.goToStep("pcm")
+        #expect(c.style.selected == "flow:pcm")
+        let trimmed = FlowFixtures.map(FlowFixtures.arcaJSON.replacingOccurrences(of: "\"id\": \"speech\"", with: "\"id\": \"talk\""))
+        c.show(loaded(trimmed, files: FlowFixtures.arcaSources, generation: 2), root: URL(fileURLWithPath: "/tmp/mc-ctl"))
+        #expect(c.selectedFeature == nil)
+        #expect(c.style.selected == nil)
+        #expect(!c.escape())
+    }
+
     /// Keys the map doesn't use (Tab, arrows, anything with ⌘) go up the responder chain, so Tab can move to the
     /// search field and menu shortcuts still work.
     @Test func theMapPassesOnKeysItDoesNotUse() throws {

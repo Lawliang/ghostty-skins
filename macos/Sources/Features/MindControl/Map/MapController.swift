@@ -175,7 +175,11 @@ extension MindControl {
             filesBySystem = files.mapValues { $0.sorted() }
             rebuildSearchIndex(map: loaded.map, report: loaded.report)
             baseLayout = FlowLayout.layout(map: loaded.map, broken: loaded.report.brokenFlows, saved: saved)
-            if let id = selectedFeature, loaded.map.feature(id) == nil { selectedFeature = nil }
+            if let id = selectedFeature, loaded.map.feature(id) == nil {
+                selectedFeature = nil
+                // Its step's highlight goes with it.
+                highlight = nil
+            }
             transition = nil
             fade = [:]
             if let current = focus, let focused = focusLayout(current) {
