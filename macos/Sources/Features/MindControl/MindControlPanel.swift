@@ -130,7 +130,7 @@ extension MindControl {
                 guard installed else {
                     promptToCopy = PromptToCopy(
                         title: "Can't find Claude Code",
-                        detail: "`claude` isn't on your shell's PATH. Install Claude Code, or paste this prompt into a Claude session in \(project.name).",
+                        detail: Self.missingClaudeDetail(projectName: project.name),
                         text: prompt)
                     return
                 }
@@ -139,7 +139,7 @@ extension MindControl {
                 } catch {
                     promptToCopy = PromptToCopy(
                         title: "Can't save the prompt",
-                        detail: "\(error.localizedDescription) Paste this prompt into a Claude session in \(project.name) instead.",
+                        detail: Self.unsavedPromptDetail(error: error.localizedDescription, projectName: project.name),
                         text: prompt)
                 }
             }
@@ -200,11 +200,13 @@ extension MindControl {
                 .frame(height: 260)
                 HStack {
                     Spacer()
+                    // Esc closes; Return copies.
+                    Button("Done") { promptToCopy = nil }.keyboardShortcut(.cancelAction)
                     Button("Copy Prompt") {
                         NSPasteboard.general.clearContents()
                         NSPasteboard.general.setString(prompt.text, forType: .string)
                     }
-                    Button("Done") { promptToCopy = nil }.keyboardShortcut(.defaultAction)
+                    .keyboardShortcut(.defaultAction)
                 }
             }
             .padding(18)
@@ -246,6 +248,15 @@ extension MindControl {
             case .loading: "Reading the flow map…"
             case .failed(let message): message
             }
+        }
+
+        /// Plain text: the copy sheet doesn't render Markdown.
+        static func missingClaudeDetail(projectName: String) -> String {
+            "Claude Code isn't on your shell's PATH. Install it, or paste this prompt into a Claude session in \(projectName)."
+        }
+
+        static func unsavedPromptDetail(error: String, projectName: String) -> String {
+            "\(error) Paste this prompt into a Claude session in \(projectName) instead."
         }
 
         static func emptyTitle(_ project: Model.Project) -> String {

@@ -56,5 +56,12 @@ struct PanelTextTests {
         #expect(!Panel.canRunClaude(in: .idle))
         #expect(!Panel.canRunClaude(in: .failed("x")))
     }
+    /// The copy sheet shows plain text, so its copy must not lean on Markdown.
+    @Test func missingClaudeCopyIsPlainText() {
+        let detail = Panel.missingClaudeDetail(projectName: "arca")
+        #expect(detail == "Claude Code isn't on your shell's PATH. Install it, or paste this prompt into a Claude session in arca.")
+        #expect(!detail.contains("`"))
+        #expect(!Panel.unsavedPromptDetail(error: "Disk full.", projectName: "arca").contains("`"))
+    }
 }
 #endif
