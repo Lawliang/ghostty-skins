@@ -44,6 +44,9 @@ extension MindControl {
             let to: MapLayout
             let start: CFTimeInterval
             let duration: CFTimeInterval
+            /// Each arrow's route, chosen once for `to`: mid-blend only the ends follow the sliding boxes, so arrows
+            /// don't flip sides frame to frame as fading boxes and moving zones come and go as obstacles.
+            let routes: [String: ArrowRouter.Route]
         }
 
         /// What the label plan depends on besides the scene.
@@ -92,7 +95,15 @@ extension MindControl {
         private(set) var saved: [String: CGPoint] = [:]
         private(set) var baseLayout = MapLayout(boxes: [], arrows: [])
         /// What's drawn: the main map, a focus layout, or a blend of the two mid-transition.
-        private(set) var layout = MapLayout(boxes: [], arrows: []) { didSet { curves = ArrowRouter.curves(for: layout) } }
+        private(set) var layout = MapLayout(boxes: [], arrows: []) {
+            didSet {
+                if let routes = transition?.routes, layout != transition?.to {
+                    curves = ArrowRouter.curves(for: layout, keeping: routes)
+                } else {
+                    curves = ArrowRouter.curves(for: layout)
+                }
+            }
+        }
         private(set) var curves: [String: Curve] = [:]
         /// Bumped by every `refresh()`. Frames that change nothing leave it, the scene and the labels alone.
         private(set) var sceneVersion = 0
@@ -355,7 +366,8 @@ extension MindControl {
                 refresh()
                 return
             }
-            transition = Transition(from: layout, to: next, start: CACurrentMediaTime(), duration: Self.transitionDuration)
+            transition = Transition(from: layout, to: next, start: CACurrentMediaTime(), duration: Self.transitionDuration,
+                                    routes: ArrowRouter.plan(for: next).routes)
         }
 
         /// Esc: clear search, then leave focus, then clear the feature or selection. False means close MindControl.

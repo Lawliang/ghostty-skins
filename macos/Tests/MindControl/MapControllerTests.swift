@@ -413,6 +413,45 @@ struct MapControllerTests {
         #expect(c.sceneVersion == settled)
     }
 
+    /// The edge nearest `p`: which side of `rect` an arrow end sits on.
+    private func side(of p: CGPoint, on rect: CGRect) -> String {
+        let distances = [("left", abs(p.x - rect.minX)), ("right", abs(p.x - rect.maxX)),
+                         ("top", abs(p.y - rect.minY)), ("bottom", abs(p.y - rect.maxY))]
+        return distances.min { $0.1 < $1.1 }?.0 ?? ""
+    }
+
+    /// Ticks a transition through in 20 steps and returns each arrow's side pairs, frame by frame.
+    private func sidesThroughTransition(_ c: MapController, start: CFTimeInterval) -> [String: [String]] {
+        var sides: [String: [String]] = [:]
+        for step in 1...20 {
+            c.tick(start + MapController.transitionDuration * Double(step) / 20)
+            for arrow in c.layout.arrows {
+                guard let curve = c.curves[arrow.id], let from = c.layout.box(arrow.from)?.rect,
+                      let to = c.layout.box(arrow.to)?.rect else { continue }
+                sides[arrow.id, default: []].append(side(of: curve.p0, on: from) + ">" + side(of: curve.p3, on: to))
+            }
+        }
+        return sides
+    }
+
+    @Test func arrowsKeepTheirSidesThroughFocusTransitions() throws {
+        // Sides are chosen once, for where the boxes end up; only the ends follow the sliding boxes.
+        let renderer = try MindControl.Renderer()
+        let c = controller()
+        c.attach(renderer)
+        for (name, enter) in [("feature", MapController.Focus.feature("speech")), ("system", .system("audio"))] {
+            c.enterFocus(enter)
+            let into = sidesThroughTransition(c, start: CACurrentMediaTime())
+            #expect(c.curves == MindControl.ArrowRouter.curves(for: c.layout), "main → \(name) ends on the usual routing")
+            c.exitFocus()
+            let back = sidesThroughTransition(c, start: CACurrentMediaTime())
+            #expect(c.layout == c.baseLayout)
+            #expect(c.curves == MindControl.ArrowRouter.curves(for: c.baseLayout), "\(name) → main ends on the usual routing")
+            for (id, pairs) in into { #expect(Set(pairs).count == 1, "main → \(name): \(id) goes \(pairs)") }
+            for (id, pairs) in back { #expect(Set(pairs).count == 1, "\(name) → main: \(id) goes \(pairs)") }
+        }
+    }
+
     @Test func labelsArePlannedOnlyWhenSomethingMoved() {
         let c = controller()
         let first = c.labels()

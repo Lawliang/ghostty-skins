@@ -48,103 +48,7 @@ extension MindControl {
     /// another box, the arrows between the pair try other edges (including a bracket out of the same side
     /// of both) and take the one crossing the fewest boxes.
     enum ArrowRouter {
-        static func curves(for layout: MapLayout) -> [String: Curve] {
-            var rects: [String: CGRect] = [:]
-            for box in layout.boxes { rects[box.id] = box.rect }
-            var groups: [String: [MapLayout.ArrowSpec]] = [:]
-            var keys: [String] = []
-            for arrow in layout.arrows {
-                let pair = [arrow.from, arrow.to].sorted()
-                let key = "\(arrow.level.rawValue)|\(pair[0])|\(pair[1])"
-                if groups[key] == nil { keys.append(key) }
-                groups[key, default: []].append(arrow)
-            }
-            let memberGroups = keys.map { key -> [Member] in
-                let group = groups[key] ?? []
-                return group.enumerated().compactMap { index, arrow in
-                    guard let a = rects[arrow.from], let b = rects[arrow.to] else { return nil }
-                    let offset = (CGFloat(index) - CGFloat(group.count - 1) / 2) * LayoutMetrics.parallelSpacing
-                    return Member(arrow: arrow, from: a, to: b, offset: offset)
-                }
-            }
-            // Facing-edge curves first; a group that has to move away from a box then sees where the others run.
-            var curves: [String: Curve] = [:]
-            var lines: [String: Polyline] = [:]
-            for member in memberGroups.joined() {
-                let curve = route(from: member.from, to: member.to, offset: member.offset, bend: member.arrow.bend)
-                curves[member.arrow.id] = curve
-                lines[member.arrow.id] = Polyline(curve)
-            }
-            for members in memberGroups {
-                guard let level = members.first?.arrow.level else { continue }
-                let own = Set(members.map(\.arrow.id))
-                let others = { [lines] in
-                    memberGroups.joined().filter { $0.arrow.level == level && !own.contains($0.arrow.id) }.compactMap { lines[$0.arrow.id] }
-                }
-                guard let routed = routeAvoidingBoxes(members, facing: members.compactMap { lines[$0.arrow.id] }, layout: layout,
-                                                      others: others) else { continue }
-                for (member, line) in zip(members, routed) {
-                    curves[member.arrow.id] = line.curve
-                    lines[member.arrow.id] = line
-                }
-            }
-            return curves
-        }
-
-        static func route(from a: CGRect, to b: CGRect, offset: CGFloat, bend: CGFloat = 0) -> Curve {
-            bent(straight(from: a, to: b, offset: offset), by: bend)
-        }
-
-        /// Moves both control points `bend` across the chord; the ends stay put. Negative is up whichever
-        /// way the arrow runs (y down), or left when the chord is closer to vertical.
-        private static func bent(_ curve: Curve, by bend: CGFloat) -> Curve {
-            let dx = curve.p3.x - curve.p0.x, dy = curve.p3.y - curve.p0.y
-            let length = hypot(dx, dy)
-            guard bend != 0, length > 0 else { return curve }
-            var nx = -dy / length, ny = dx / length
-            if abs(dx) >= abs(dy) ? ny < 0 : nx < 0 { nx = -nx; ny = -ny }
-            var out = curve
-            out.p1 = CGPoint(x: curve.p1.x + nx * bend, y: curve.p1.y + ny * bend)
-            out.p2 = CGPoint(x: curve.p2.x + nx * bend, y: curve.p2.y + ny * bend)
-            return out
-        }
-
-        private static func straight(from a: CGRect, to b: CGRect, offset: CGFloat) -> Curve {
-            let separatedHorizontally = b.minX > a.maxX || b.maxX < a.minX
-            if separatedHorizontally {
-                let sign: CGFloat = b.midX >= a.midX ? 1 : -1
-                let dy = clamp(offset, a, b, \.height)
-                let start = CGPoint(x: sign > 0 ? a.maxX : a.minX, y: a.midY + dy)
-                let end = CGPoint(x: sign > 0 ? b.minX : b.maxX, y: b.midY + dy)
-                let k = max(40, abs(end.x - start.x) * 0.45)
-                return Curve(p0: start, p1: CGPoint(x: start.x + sign * k, y: start.y),
-                             p2: CGPoint(x: end.x - sign * k, y: end.y), p3: end)
-            }
-            let sign: CGFloat = b.midY >= a.midY ? 1 : -1
-            let dx = clamp(offset, a, b, \.width)
-            let start = CGPoint(x: a.midX + dx, y: sign > 0 ? a.maxY : a.minY)
-            let end = CGPoint(x: b.midX + dx, y: sign > 0 ? b.minY : b.maxY)
-            let k = max(30, abs(end.y - start.y) * 0.45)
-            return Curve(p0: start, p1: CGPoint(x: start.x, y: start.y + sign * k),
-                         p2: CGPoint(x: end.x, y: end.y - sign * k), p3: end)
-        }
-
-        private static func clamp(_ offset: CGFloat, _ a: CGRect, _ b: CGRect, _ side: KeyPath<CGRect, CGFloat>) -> CGFloat {
-            let limit = max(0, min(a[keyPath: side], b[keyPath: side]) / 2 - 4)
-            return max(-limit, min(limit, offset))
-        }
-
-        // MARK: - Around boxes
-
-        /// One arrow of a group between the same two boxes.
-        private struct Member {
-            let arrow: MapLayout.ArrowSpec
-            let from: CGRect
-            let to: CGRect
-            let offset: CGFloat
-        }
-
-        private enum Side: CaseIterable {
+        enum Side: CaseIterable, Equatable {
             case left, right, top, bottom
 
             /// Pointing out of the box.
@@ -172,95 +76,171 @@ extension MindControl {
             func length(of r: CGRect) -> CGFloat { normal.dx == 0 ? r.width : r.height }
         }
 
-        /// Nil when the group's facing-edge curves pass over no box. Otherwise every pair of sides, each with long
-        /// and short handles, and the one crossing the fewest boxes wins. Ties go to the fewest name strips crossed
-        /// (of the boxes it runs inside), then the fewest other arrows at its level crossed or met end to end, then
-        /// the shortest. The facing edges win any tie with them, so nil again.
-        private static func routeAvoidingBoxes(_ members: [Member], facing: [Polyline], layout: MapLayout,
-                                               others: () -> [Polyline]) -> [Polyline]? {
-            guard let first = members.first, facing.count == members.count else { return nil }
-            let ends = [first.arrow.from, first.arrow.to]
-            let obstacles = obstacles(between: first.from, and: first.to, ids: ends, level: first.arrow.level, layout: layout)
-            let baseline = facing.reduce(0) { $0 + $1.entered(obstacles, upTo: .max) }
-            guard baseline > 0 else { return nil }
-
-            // Sides are chosen for the pair, so a flow and its return leave and enter by the same edges.
-            let ids = ends.sorted()
-            let one = first.arrow.from == ids[0] ? first.from : first.to
-            let two = first.arrow.from == ids[0] ? first.to : first.from
-            var fewest = baseline - 1
-            var tied: [[Polyline]] = []
-            for sideOne in Side.allCases {
-                for sideTwo in Side.allCases {
-                    for short in [false, true] {
-                        var lines: [Polyline] = []
-                        var score = 0
-                        for member in members where score <= fewest {
-                            let shifts = shifts(one, sideOne, two, sideTwo, offset: member.offset)
-                            let curve = member.arrow.from == ids[0]
-                                ? sided(from: member.from, sideOne, shift: shifts.one, to: member.to, sideTwo, shift: shifts.two,
-                                        extra: shifts.extra, short: short)
-                                : sided(from: member.from, sideTwo, shift: shifts.two, to: member.to, sideOne, shift: shifts.one,
-                                        extra: shifts.extra, short: short)
-                            let line = Polyline(bent(curve, by: member.arrow.bend))
-                            score += line.entered(obstacles, upTo: fewest - score)
-                            lines.append(line)
-                        }
-                        guard score <= fewest else { continue }
-                        if score < fewest { tied = [] }
-                        fewest = score
-                        tied.append(lines)
-                    }
-                }
-            }
-            guard tied.count > 1 else { return tied.first }
-            let strips = nameStrips(around: first.from, and: first.to, ids: ends, layout: layout)
-            let stripCounts = tied.map { $0.reduce(0) { $0 + $1.entered(strips, upTo: .max) } }
-            let fewestStrips = stripCounts.min() ?? 0
-            tied = zip(tied, stripCounts).filter { $0.1 == fewestStrips }.map(\.0)
-            guard tied.count > 1 else { return tied.first }
-            let placed = others()
-            var best: (lines: [Polyline], meets: Int, length: CGFloat)?
-            for lines in tied {
-                let meets = lines.reduce(0) { total, line in
-                    total + placed.reduce(0) { $0 + (line.sharesAnEnd(with: $1) || line.crosses($1) ? 1 : 0) }
-                }
-                let length = lines.reduce(0) { $0 + $1.length }
-                if let current = best, meets > current.meets || meets == current.meets && length >= current.length - 0.5 { continue }
-                best = (lines, meets, length)
-            }
-            return best?.lines
+        /// How one arrow runs, apart from where its boxes are: the edges it leaves and enters by, in its own
+        /// direction, and whether it is the facing-edge curve or a detour (with short or long handles).
+        struct Route: Equatable {
+            let exit: Side
+            let entry: Side
+            let detour: Bool
+            let short: Bool
         }
 
-        /// The strips holding the names of the boxes the arrow runs inside: a system's header, a zone's label.
-        private static func nameStrips(around a: CGRect, and b: CGRect, ids: [String], layout: MapLayout) -> [Area] {
-            layout.boxes.compactMap { box -> Area? in
-                guard !ids.contains(box.id), box.rect.contains(a) || box.rect.contains(b) else { return nil }
-                let r = box.rect
-                switch box.kind {
-                case .zone: return Area(CGRect(x: r.minX, y: r.minY, width: r.width, height: min(r.height, LayoutMetrics.zoneLabel)))
-                case .system: return Area(CGRect(x: r.minX, y: r.minY, width: r.width, height: min(r.height, LayoutMetrics.header)))
-                case .part: return nil
+        /// Every arrow's curve and the route it takes.
+        struct Plan {
+            var curves: [String: Curve] = [:]
+            var routes: [String: Route] = [:]
+        }
+
+        static func curves(for layout: MapLayout) -> [String: Curve] { plan(for: layout).curves }
+
+        /// Curves that keep the given routes, so only their ends follow the boxes: a transition picks the
+        /// routes once, for where the boxes end up. An arrow without a route takes its facing edges.
+        static func curves(for layout: MapLayout, keeping routes: [String: Route]) -> [String: Curve] {
+            var curves: [String: Curve] = [:]
+            for members in groups(in: layout) {
+                for member in members {
+                    let route = routes[member.arrow.id] ?? facingRoute(member)
+                    curves[member.arrow.id] = curve(member, route, pairFirst: members[0].pairFirst)
+                }
+            }
+            return curves
+        }
+
+        static func plan(for layout: MapLayout) -> Plan {
+            let memberGroups = groups(in: layout)
+            // Facing-edge curves first; a group that has to move away from a box then sees where the others run.
+            var plan = Plan()
+            var lines: [String: Polyline] = [:]
+            for member in memberGroups.joined() {
+                let route = facingRoute(member)
+                let curve = curve(member, route, pairFirst: member.pairFirst)
+                plan.curves[member.arrow.id] = curve
+                plan.routes[member.arrow.id] = route
+                lines[member.arrow.id] = Polyline(curve)
+            }
+            var idsByLevel: [MapLayout.ArrowLevel: [String]] = [:]
+            for member in memberGroups.joined() { idsByLevel[member.arrow.level, default: []].append(member.arrow.id) }
+            for members in memberGroups {
+                guard let level = members.first?.arrow.level else { continue }
+                let own = Set(members.map(\.arrow.id))
+                let others = { [lines] in (idsByLevel[level] ?? []).filter { !own.contains($0) }.compactMap { lines[$0] } }
+                guard let detour = detour(members, facing: members.compactMap { lines[$0.arrow.id] }, layout: layout,
+                                          others: others) else { continue }
+                for (member, choice) in zip(members, detour) {
+                    plan.curves[member.arrow.id] = choice.line.curve
+                    plan.routes[member.arrow.id] = choice.route
+                    lines[member.arrow.id] = choice.line
+                }
+            }
+            return plan
+        }
+
+        static func route(from a: CGRect, to b: CGRect, offset: CGFloat, bend: CGFloat = 0) -> Curve {
+            let sides = facingSides(a, b)
+            return bent(facing(from: a, sides.exit, to: b, sides.entry, offset: offset), by: bend)
+        }
+
+        // MARK: - Groups
+
+        /// One arrow of a group between the same two boxes.
+        private struct Member {
+            let arrow: MapLayout.ArrowSpec
+            let from: CGRect
+            let to: CGRect
+            let offset: CGFloat
+            /// The pair's ids sorted; sides and parallel shifts are worked out in these terms.
+            let pairFirst: String
+        }
+
+        /// Arrows grouped by level and box pair, in first-seen order, each with its parallel offset.
+        private static func groups(in layout: MapLayout) -> [[Member]] {
+            var rects: [String: CGRect] = [:]
+            for box in layout.boxes { rects[box.id] = box.rect }
+            var groups: [String: [MapLayout.ArrowSpec]] = [:]
+            var keys: [String] = []
+            for arrow in layout.arrows {
+                let pair = [arrow.from, arrow.to].sorted()
+                let key = "\(arrow.level.rawValue)|\(pair[0])|\(pair[1])"
+                if groups[key] == nil { keys.append(key) }
+                groups[key, default: []].append(arrow)
+            }
+            return keys.map { key -> [Member] in
+                let group = groups[key] ?? []
+                return group.enumerated().compactMap { index, arrow in
+                    guard let a = rects[arrow.from], let b = rects[arrow.to] else { return nil }
+                    let offset = (CGFloat(index) - CGFloat(group.count - 1) / 2) * LayoutMetrics.parallelSpacing
+                    return Member(arrow: arrow, from: a, to: b, offset: offset, pairFirst: min(arrow.from, arrow.to))
                 }
             }
         }
 
-        /// The boxes an arrow at `level` must not pass over: those drawn at that level, other than the two it
-        /// joins and any box holding either (a part's system, a system's zone). Its own two boxes count too,
-        /// slightly shrunk so leaving an edge isn't a crossing, unless one holds the other.
-        private static func obstacles(between a: CGRect, and b: CGRect, ids: [String], level: MapLayout.ArrowLevel,
-                                      layout: MapLayout) -> [Area] {
-            let shown: Set<MapLayout.BoxKind>
-            switch layout.fixedLevel ? .part : level {
-            case .zone: shown = [.zone]
-            case .system: shown = [.zone, .system]
-            case .part: shown = [.zone, .system, .part]
+        // MARK: - Curves
+
+        private static func facingRoute(_ member: Member) -> Route {
+            let sides = facingSides(member.from, member.to)
+            return Route(exit: sides.exit, entry: sides.entry, detour: false, short: false)
+        }
+
+        /// The member's curve along `route`, bent by the arrow's `bend`.
+        private static func curve(_ member: Member, _ route: Route, pairFirst: String) -> Curve {
+            guard route.detour else {
+                return bent(facing(from: member.from, route.exit, to: member.to, route.entry, offset: member.offset), by: member.arrow.bend)
             }
-            var out = layout.boxes.filter { box in
-                shown.contains(box.kind) && !ids.contains(box.id) && !box.rect.contains(a) && !box.rect.contains(b)
-            }.map { $0.rect.insetBy(dx: 1, dy: 1) }
-            if !a.contains(b), !b.contains(a) { out += [a.insetBy(dx: 2, dy: 2), b.insetBy(dx: 2, dy: 2)] }
-            return out.filter { !$0.isNull && !$0.isEmpty }.map(Area.init)
+            let forward = member.arrow.from == pairFirst
+            let one = forward ? member.from : member.to, two = forward ? member.to : member.from
+            let sideOne = forward ? route.exit : route.entry, sideTwo = forward ? route.entry : route.exit
+            let shifts = shifts(one, sideOne, two, sideTwo, offset: member.offset)
+            let curve = forward
+                ? sided(from: member.from, sideOne, shift: shifts.one, to: member.to, sideTwo, shift: shifts.two, extra: shifts.extra,
+                        short: route.short)
+                : sided(from: member.from, sideTwo, shift: shifts.two, to: member.to, sideOne, shift: shifts.one, extra: shifts.extra,
+                        short: route.short)
+            return bent(curve, by: member.arrow.bend)
+        }
+
+        /// Moves both control points `bend` across the chord; the ends stay put. Negative is up whichever
+        /// way the arrow runs (y down), or left when the chord is closer to vertical.
+        private static func bent(_ curve: Curve, by bend: CGFloat) -> Curve {
+            let dx = curve.p3.x - curve.p0.x, dy = curve.p3.y - curve.p0.y
+            let length = hypot(dx, dy)
+            guard bend != 0, length > 0 else { return curve }
+            var nx = -dy / length, ny = dx / length
+            if abs(dx) >= abs(dy) ? ny < 0 : nx < 0 { nx = -nx; ny = -ny }
+            var out = curve
+            out.p1 = CGPoint(x: curve.p1.x + nx * bend, y: curve.p1.y + ny * bend)
+            out.p2 = CGPoint(x: curve.p2.x + nx * bend, y: curve.p2.y + ny * bend)
+            return out
+        }
+
+        /// Side by side boxes face each other left and right; otherwise top and bottom.
+        private static func facingSides(_ a: CGRect, _ b: CGRect) -> (exit: Side, entry: Side) {
+            if b.minX > a.maxX || b.maxX < a.minX { return b.midX >= a.midX ? (.right, .left) : (.left, .right) }
+            return b.midY >= a.midY ? (.bottom, .top) : (.top, .bottom)
+        }
+
+        /// The facing-edge curve: both ends slid by `offset` along their edges, handles straight out.
+        private static func facing(from a: CGRect, _ exit: Side, to b: CGRect, _ entry: Side, offset: CGFloat) -> Curve {
+            if exit == .left || exit == .right {
+                let sign: CGFloat = exit == .right ? 1 : -1
+                let dy = clamp(offset, a, b, \.height)
+                let start = CGPoint(x: sign > 0 ? a.maxX : a.minX, y: a.midY + dy)
+                let end = CGPoint(x: sign > 0 ? b.minX : b.maxX, y: b.midY + dy)
+                let k = max(40, abs(end.x - start.x) * 0.45)
+                return Curve(p0: start, p1: CGPoint(x: start.x + sign * k, y: start.y),
+                             p2: CGPoint(x: end.x - sign * k, y: end.y), p3: end)
+            }
+            let sign: CGFloat = exit == .bottom ? 1 : -1
+            let dx = clamp(offset, a, b, \.width)
+            let start = CGPoint(x: a.midX + dx, y: sign > 0 ? a.maxY : a.minY)
+            let end = CGPoint(x: b.midX + dx, y: sign > 0 ? b.minY : b.maxY)
+            let k = max(30, abs(end.y - start.y) * 0.45)
+            return Curve(p0: start, p1: CGPoint(x: start.x, y: start.y + sign * k),
+                         p2: CGPoint(x: end.x, y: end.y - sign * k), p3: end)
+        }
+
+        private static func clamp(_ offset: CGFloat, _ a: CGRect, _ b: CGRect, _ side: KeyPath<CGRect, CGFloat>) -> CGFloat {
+            let limit = max(0, min(a[keyPath: side], b[keyPath: side]) / 2 - 4)
+            return max(-limit, min(limit, offset))
         }
 
         /// How far each end slides along its edge for a parallel arrow, in the pair's own terms so an arrow
@@ -307,6 +287,92 @@ extension MindControl {
             kEnd = max(10, kEnd)
             return Curve(p0: start, p1: CGPoint(x: start.x + exit.normal.dx * kStart, y: start.y + exit.normal.dy * kStart),
                          p2: CGPoint(x: finish.x + entry.normal.dx * kEnd, y: finish.y + entry.normal.dy * kEnd), p3: finish)
+        }
+
+        // MARK: - Around boxes
+
+        /// Nil when the group's facing-edge curves pass over no box. Otherwise every pair of sides, each with long
+        /// and short handles, and the one crossing the fewest boxes wins. Ties go to the fewest name strips crossed
+        /// (of the boxes it runs inside), then the fewest other arrows at its level crossed or met end to end, then
+        /// the shortest. The facing edges win any tie with them, so nil again.
+        private static func detour(_ members: [Member], facing: [Polyline], layout: MapLayout,
+                                   others: () -> [Polyline]) -> [(route: Route, line: Polyline)]? {
+            guard let first = members.first, facing.count == members.count else { return nil }
+            let ends = [first.arrow.from, first.arrow.to]
+            let obstacles = obstacles(between: first.from, and: first.to, ids: ends, level: first.arrow.level, layout: layout)
+            let baseline = facing.reduce(0) { $0 + $1.entered(obstacles, upTo: .max) }
+            guard baseline > 0 else { return nil }
+
+            // Sides are chosen for the pair, so a flow and its return leave and enter by the same edges.
+            var fewest = baseline - 1
+            var tied: [[(route: Route, line: Polyline)]] = []
+            for sideOne in Side.allCases {
+                for sideTwo in Side.allCases {
+                    for short in [false, true] {
+                        var choices: [(route: Route, line: Polyline)] = []
+                        var score = 0
+                        for member in members where score <= fewest {
+                            let forward = member.arrow.from == first.pairFirst
+                            let route = Route(exit: forward ? sideOne : sideTwo, entry: forward ? sideTwo : sideOne, detour: true, short: short)
+                            let line = Polyline(curve(member, route, pairFirst: first.pairFirst))
+                            score += line.entered(obstacles, upTo: fewest - score)
+                            choices.append((route, line))
+                        }
+                        guard score <= fewest else { continue }
+                        if score < fewest { tied = [] }
+                        fewest = score
+                        tied.append(choices)
+                    }
+                }
+            }
+            guard tied.count > 1 else { return tied.first }
+            let strips = nameStrips(around: first.from, and: first.to, ids: ends, layout: layout)
+            let stripCounts = tied.map { $0.reduce(0) { $0 + $1.line.entered(strips, upTo: .max) } }
+            let fewestStrips = stripCounts.min() ?? 0
+            tied = zip(tied, stripCounts).filter { $0.1 == fewestStrips }.map(\.0)
+            guard tied.count > 1 else { return tied.first }
+            let placed = others()
+            var best: (choices: [(route: Route, line: Polyline)], meets: Int, length: CGFloat)?
+            for choices in tied {
+                let meets = choices.reduce(0) { total, choice in
+                    total + placed.reduce(0) { $0 + (choice.line.sharesAnEnd(with: $1) || choice.line.crosses($1) ? 1 : 0) }
+                }
+                let length = choices.reduce(0) { $0 + $1.line.length }
+                if let current = best, meets > current.meets || meets == current.meets && length >= current.length - 0.5 { continue }
+                best = (choices, meets, length)
+            }
+            return best?.choices
+        }
+
+        /// The strips holding the names of the boxes the arrow runs inside: a system's header, a zone's label.
+        private static func nameStrips(around a: CGRect, and b: CGRect, ids: [String], layout: MapLayout) -> [Area] {
+            layout.boxes.compactMap { box -> Area? in
+                guard !ids.contains(box.id), box.rect.contains(a) || box.rect.contains(b) else { return nil }
+                let r = box.rect
+                switch box.kind {
+                case .zone: return Area(CGRect(x: r.minX, y: r.minY, width: r.width, height: min(r.height, LayoutMetrics.zoneLabel)))
+                case .system: return Area(CGRect(x: r.minX, y: r.minY, width: r.width, height: min(r.height, LayoutMetrics.header)))
+                case .part: return nil
+                }
+            }
+        }
+
+        /// The boxes an arrow at `level` must not pass over: those drawn at that level, other than the two it
+        /// joins and any box holding either (a part's system, a system's zone). Its own two boxes count too,
+        /// slightly shrunk so leaving an edge isn't a crossing, unless one holds the other.
+        private static func obstacles(between a: CGRect, and b: CGRect, ids: [String], level: MapLayout.ArrowLevel,
+                                      layout: MapLayout) -> [Area] {
+            let shown: Set<MapLayout.BoxKind>
+            switch layout.fixedLevel ? .part : level {
+            case .zone: shown = [.zone]
+            case .system: shown = [.zone, .system]
+            case .part: shown = [.zone, .system, .part]
+            }
+            var out = layout.boxes.filter { box in
+                shown.contains(box.kind) && !ids.contains(box.id) && !box.rect.contains(a) && !box.rect.contains(b)
+            }.map { $0.rect.insetBy(dx: 1, dy: 1) }
+            if !a.contains(b), !b.contains(a) { out += [a.insetBy(dx: 2, dy: 2), b.insetBy(dx: 2, dy: 2)] }
+            return out.filter { !$0.isNull && !$0.isEmpty }.map(Area.init)
         }
     }
 }

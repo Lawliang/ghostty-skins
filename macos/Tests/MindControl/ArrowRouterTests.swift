@@ -190,6 +190,38 @@ struct ArrowRouterTests {
         }
     }
 
+    @Test func keepingALayoutsOwnRoutesGivesItsCurves() throws {
+        let map = FlowFixtures.arca
+        // (layout, whether any arrow there has to detour)
+        let cases = [(MindControl.FlowLayout.layout(map: map, broken: []), true),
+                     (try #require(MindControl.FocusLayout.system("audio", map: map, broken: [])), true),
+                     (try #require(MindControl.FocusLayout.feature("speech", map: map, broken: [])), false)]
+        for (layout, detours) in cases {
+            let plan = ArrowRouter.plan(for: layout)
+            #expect(plan.curves == ArrowRouter.curves(for: layout))
+            #expect(ArrowRouter.curves(for: layout, keeping: plan.routes) == plan.curves)
+            #expect(plan.routes.values.contains { $0.detour } == detours)
+        }
+    }
+
+    @Test func keptRoutesFollowMovedBoxesOnTheSameSides() throws {
+        // `begin` detours left of BLE link; moved boxes keep that bracket, only its ends move.
+        let layout = MindControl.FlowLayout.layout(map: FlowFixtures.arca, broken: [])
+        let routes = ArrowRouter.plan(for: layout).routes
+        let begin = try #require(routes["sys:tap>audio"])
+        #expect(begin.detour && begin.exit == .left && begin.entry == .left)
+        var moved = layout
+        moved.boxes = moved.boxes.map { box in
+            var box = box
+            if box.id == "tap" { box.rect = box.rect.offsetBy(dx: 400, dy: 0) }
+            return box
+        }
+        let curve = try #require(ArrowRouter.curves(for: moved, keeping: routes)["sys:tap>audio"])
+        let tap = try #require(moved.box("tap")).rect
+        #expect(abs(curve.p0.x - tap.minX) < 0.001)
+        #expect(curve.p1.x < curve.p0.x)
+    }
+
     @Test func routingIsDeterministic() {
         let layout = MindControl.FlowLayout.layout(map: FlowFixtures.arca, broken: [])
         #expect(ArrowRouter.curves(for: layout) == ArrowRouter.curves(for: layout))
