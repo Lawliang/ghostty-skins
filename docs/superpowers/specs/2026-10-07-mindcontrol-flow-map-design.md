@@ -41,6 +41,7 @@ part or file. Nothing is drawn that does not describe a real flow.
 | Trusting arrows | Each flow names its hand-off in `via`, checked against the code. |
 | Box size | Boxes are sized for their parts; zooming never moves anything. |
 | Map growing too big | Soft density warnings; nothing blocked. |
+| Wrong folder | The header shows the project path with a Change… picker; Draft and Refresh are off at `~`, `/` and outside git. |
 
 ## The flow file
 
@@ -109,7 +110,9 @@ Rules:
 ## What MindControl does on open
 
 1. **Find the project.** Same as today: git root of the terminal's working
-   directory, or the directory itself.
+   directory, or the directory itself. A folder chosen with **Change…** in the
+   header overrides this for that window until MindControl is closed. The
+   header always shows the full project path.
 2. **Read** `.mindcontrol/flow.json`. If it is missing, show the empty state. If
    it is invalid JSON or breaks a rule above, show the errors, each with a line
    number where one exists, and no map.
@@ -231,6 +234,10 @@ Claude** button. The button opens a new Lostty tab in the project root running
   file if needed: "When you change how data or control moves between systems,
   update `.mindcontrol/flow.json`."
 
+Draft and Refresh are disabled when the project is the home folder, `/`, or
+not inside a git repository. The panel names the reason and offers
+**Change…**.
+
 When the file appears, the map loads by itself. If `claude` is not on the PATH,
 the button's result says so and shows the prompt with a Copy button.
 
@@ -299,6 +306,17 @@ New, each with one job:
 | Unreadable `layout.json` | Ignored; automatic layout |
 | `claude` not found | Message plus the prompt with a Copy button |
 | Unreadable project folder | Same message as today |
+| Project is `~`, `/` or outside git | Map shown if a flow file exists; Draft and Refresh disabled with the reason and Change… |
+
+## Wrong-folder investigation
+
+Earlier, MindControl showed the home folder after the user had `cd`'d into
+Arca. The working directory comes from the shell's OSC 7 report, via
+`Ghostty.App.pwdChanged` into `surfaceView.pwd`. The first plan task
+reproduces this, finds where the report is lost or stale, and fixes it if the
+cause is in Lostty's code. If the cause is outside Lostty, for example a
+missing shell integration, the panel's path display and Change… are the
+remedy, and the finding is recorded in the plan's ledger.
 
 ## Testing
 
@@ -326,6 +344,8 @@ Unit tests:
 - Feature routes become numbered steps in order, with `when` groups and
   unknown flows reported.
 - `PanZoomCamera`: zoom about a point, fit, and screen↔world round trip.
+- Draft and Refresh availability: off for `~`, `/` and non-git folders, on
+  for a git root; a Change… override replaces the terminal's folder.
 - Renderer smoke test: draws a small map without Metal validation errors.
 
 Acceptance:
