@@ -4,15 +4,27 @@ extension MindControl {
     /// Calls `onChange` (on the main queue) when `.mindcontrol/flow.json` appears or its contents change.
     /// Writes to `layout.json` and other files don't count.
     final class FlowWatcher {
+        /// Runs a debounced check after `delay` seconds. It must run the work on the main queue.
+        typealias Schedule = (_ delay: TimeInterval, _ work: DispatchWorkItem) -> Void
+
+        /// The app's schedule: `asyncAfter` on the main queue.
+        static let afterDelayOnMain: Schedule = { delay, work in
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+        }
+
         private let root: URL
+        private let schedule: Schedule
         private let onChange: () -> Void
         private var sources: [DispatchSourceFileSystemObject] = []
         private var last: Data?
         private var pending: DispatchWorkItem?
         private var stopped = false
 
-        init(root: URL, onChange: @escaping () -> Void) {
+        /// Tests pass their own `schedule` to run the debounced check whenever they choose,
+        /// so the result doesn't depend on how busy the main thread is.
+        init(root: URL, schedule: @escaping Schedule = FlowWatcher.afterDelayOnMain, onChange: @escaping () -> Void) {
             self.root = root
+            self.schedule = schedule
             self.onChange = onChange
             last = read()
             arm()
@@ -62,7 +74,7 @@ extension MindControl {
                 self.onChange()
             }
             pending = work
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: work)
+            schedule(0.25, work)
         }
     }
 }

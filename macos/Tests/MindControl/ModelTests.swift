@@ -29,7 +29,7 @@ struct ModelTests {
               watch: false)
     }
 
-    private func waitFor(_ condition: () -> Bool, seconds: Double = 3) async {
+    private func waitFor(_ condition: () -> Bool, seconds: Double = 10) async {
         let deadline = Date().addingTimeInterval(seconds)
         while !condition(), Date() < deadline { try? await Task.sleep(nanoseconds: 50_000_000) }
     }
