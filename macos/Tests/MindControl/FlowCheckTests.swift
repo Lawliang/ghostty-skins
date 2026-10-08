@@ -43,6 +43,29 @@ struct FlowCheckTests {
         #expect(check(FlowFixtures.arca, files).staleParts.contains("audio.gate"))
     }
 
+    @Test func anchorsResolveToPrivatePackageAndDistributedTypes() {
+        let map = FlowFixtures.map(#"""
+        { "version": 1,
+          "systems": [ { "id": "core", "name": "Core", "paths": ["core/**"],
+                         "parts": [ { "id": "foo", "name": "Foo", "anchor": "Foo" },
+                                    { "id": "bar", "name": "Bar", "anchor": "Bar" },
+                                    { "id": "baz", "name": "Baz", "anchor": "Baz" },
+                                    { "id": "qux", "name": "Qux", "anchor": "Qux" } ] } ] }
+        """#)
+        let report = check(map, [
+            "core/Foo.swift": "private struct Foo {}\n",
+            "core/Bar.swift": "fileprivate final class Bar {}\n",
+            "core/Baz.swift": "package enum Baz {}\n",
+            "core/Qux.swift": "import Distributed\n\ndistributed actor Qux {}\n",
+        ])
+        #expect(report.staleParts.isEmpty)
+        #expect(!report.issues.contains { $0.kind == .staleAnchor })
+        #expect(report.anchorFiles == ["core.foo": "core/Foo.swift", "core.bar": "core/Bar.swift",
+                                       "core.baz": "core/Baz.swift", "core.qux": "core/Qux.swift"])
+        #expect(report.typeFiles == ["Foo": "core/Foo.swift", "Bar": "core/Bar.swift",
+                                     "Baz": "core/Baz.swift", "Qux": "core/Qux.swift"])
+    }
+
     @Test func fileAnchorsWorkWithoutSwift() {
         let map = FlowFixtures.map(#"""
         { "version": 1,

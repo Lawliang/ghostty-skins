@@ -85,11 +85,12 @@ extension MindControl {
                 }
             }
 
-            // Swift types, globally and per owning system.
+            // Swift types, globally and per owning system. Private types count: an anchor or a search
+            // can name any type the file declares.
             var typesBySystem: [String: [String: String]] = [:]
             for file in snapshot.sourceFiles where file.hasSuffix(".swift") {
                 guard let text = source(file) else { continue }
-                for type in SwiftSymbols.declaredTypes(in: text) {
+                for type in SwiftSymbols.declaredTypes(in: text, includePrivate: true) {
                     if report.typeFiles[type] == nil { report.typeFiles[type] = file }
                     if let owner = report.owners[file], typesBySystem[owner]?[type] == nil {
                         typesBySystem[owner, default: [:]][type] = file
