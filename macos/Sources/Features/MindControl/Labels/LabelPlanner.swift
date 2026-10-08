@@ -15,9 +15,12 @@ extension MindControl {
         let priority: Int
         let background: Bool
         let maxWidth: CGFloat?
+        /// Other anchors to try, in order, when the label collides at `anchor` (arrow labels: points along the curve).
+        var alternates: [CGPoint] = []
     }
 
-    /// Chooses which labels show: by priority, never overlapping, on screen, within the budget.
+    /// Chooses which labels show: by priority, never overlapping, on screen, within the budget. A label that collides
+    /// at its anchor tries its alternates before it's dropped.
     enum LabelPlanner {
         static let budget = 150
         /// Larger than any view. Every RectGrid rect lies inside the viewport, so this bounds its Int64 cells (which
@@ -38,21 +41,25 @@ extension MindControl {
                 guard candidate.opacity > 0.02, !candidate.text.isEmpty,
                       candidate.anchor.x.isFinite, candidate.anchor.y.isFinite,
                       let fit = fitted(candidate, measure: measure) else { continue }
-                let origin = candidate.leading
-                    ? CGPoint(x: candidate.anchor.x, y: candidate.anchor.y - fit.size.height / 2)
-                    : CGPoint(x: candidate.anchor.x - fit.size.width / 2, y: candidate.anchor.y - fit.size.height / 2)
-                let frame = CGRect(origin: origin, size: fit.size)
-                let footprint = candidate.background
-                    ? frame.insetBy(dx: -LabelOverlayView.pillPadding.width, dy: -LabelOverlayView.pillPadding.height)
-                    : frame
-                guard isFinite(footprint), footprint.maxX > 0, footprint.minX < viewport.width,
-                      footprint.maxY > 0, footprint.minY < viewport.height else { continue }
-                // Only the on-screen part can collide, and clipping keeps every RectGrid rect within the viewport.
-                let visible = footprint.intersection(screen)
-                guard !occupied.intersects(visible) else { continue }
-                occupied.insert(visible)
-                placed.append(PlacedLabel(id: candidate.id, text: fit.text, frame: frame, fontSize: candidate.fontSize,
-                                          isBold: candidate.bold, opacity: candidate.opacity, hasBackground: candidate.background))
+                // The anchor, then each alternate in order: the first spot that's on screen and free wins.
+                for anchor in [candidate.anchor] + candidate.alternates where anchor.x.isFinite && anchor.y.isFinite {
+                    let origin = candidate.leading
+                        ? CGPoint(x: anchor.x, y: anchor.y - fit.size.height / 2)
+                        : CGPoint(x: anchor.x - fit.size.width / 2, y: anchor.y - fit.size.height / 2)
+                    let frame = CGRect(origin: origin, size: fit.size)
+                    let footprint = candidate.background
+                        ? frame.insetBy(dx: -LabelOverlayView.pillPadding.width, dy: -LabelOverlayView.pillPadding.height)
+                        : frame
+                    guard isFinite(footprint), footprint.maxX > 0, footprint.minX < viewport.width,
+                          footprint.maxY > 0, footprint.minY < viewport.height else { continue }
+                    // Only the on-screen part can collide, and clipping keeps every RectGrid rect within the viewport.
+                    let visible = footprint.intersection(screen)
+                    guard !occupied.intersects(visible) else { continue }
+                    occupied.insert(visible)
+                    placed.append(PlacedLabel(id: candidate.id, text: fit.text, frame: frame, fontSize: candidate.fontSize,
+                                              isBold: candidate.bold, opacity: candidate.opacity, hasBackground: candidate.background))
+                    break
+                }
             }
             return placed
         }

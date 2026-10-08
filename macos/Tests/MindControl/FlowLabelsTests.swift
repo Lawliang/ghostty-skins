@@ -1,5 +1,6 @@
 #if os(macOS)
 import CoreGraphics
+import Foundation
 import Testing
 @testable import Ghostty
 
@@ -124,6 +125,8 @@ struct FlowLabelsTests {
 
     /// Spec: zoomed out, a box shows its name, its summary and a faint "N parts" hint. All three must fit, not only be
     /// candidates: a summary that always collides with its own name never shows.
+    /// Main actor: the real measure caches sizes in a static dictionary that only the main thread may touch.
+    @MainActor
     @Test func middleZoomPlacesSystemNameSummaryAndPartHint() throws {
         let audio = try #require(layout.box("audio")).rect
         let curves = MindControl.ArrowRouter.curves(for: layout)
@@ -248,6 +251,77 @@ struct FlowLabelsTests {
         }
         #expect(placed.map(\.text) == ["word word…"])
         #expect(calls <= 20, "\(calls) measurements")
+    }
+    // MARK: Alternate anchors
+
+    @Test func plannerTriesAlternateAnchorsBeforeDroppingALabel() {
+        let first = Self.label("first", "aaaaaaaaaa", at: CGPoint(x: 100, y: 100), leading: false, priority: 1)
+        var second = Self.label("second", "bbbbbbbbbb", at: CGPoint(x: 100, y: 100), leading: false, priority: 2)
+        second.alternates = [CGPoint(x: 110, y: 104), CGPoint(x: 100, y: 140), CGPoint(x: 100, y: 180)]
+        let placed = LabelPlanner.plan([first, second], viewport: view, measure: Self.measure)
+        #expect(placed.map(\.id) == ["first", "second"])
+        // The first alternate still overlaps; the second is free.
+        #expect(placed.last?.frame.midY == 140)
+        var blocked = second
+        blocked.alternates = [CGPoint(x: 104, y: 102)]
+        #expect(LabelPlanner.plan([first, blocked], viewport: view, measure: Self.measure).map(\.id) == ["first"])
+    }
+
+    /// Arrow labels carry alternates along their curve, so parallel arrows that share a midpoint area all get one.
+    @Test func arrowLabelsOfferPointsAlongTheirCurve() throws {
+        let curves = MindControl.ArrowRouter.curves(for: layout)
+        var camera = MindControl.PanZoomCamera.fitting(layout.bounds, in: view)
+        camera.zoom = 1.3
+        let candidates = FlowLabels.candidates(layout: layout, curves: curves, camera: camera, viewSize: view, litFlows: [], showControl: true)
+        let pcm = try #require(candidates.first { $0.text == "PCM16 24 kHz" })
+        let curve = try #require(curves[pcm.id])
+        #expect(pcm.alternates == [0.35, 0.65, 0.25, 0.75].map { camera.toScreen(curve.point(at: $0), viewSize: view) })
+        // Box names stay where they are.
+        #expect(candidates.filter { !$0.background }.allSatisfy { $0.alternates.isEmpty })
+    }
+
+    @MainActor
+    private func plannedTexts(zoom: CGFloat? = nil, feature: String? = nil) -> [MindControl.PlacedLabel] {
+        let c = MindControl.MapController()
+        c.viewSize = view
+        let files = FlowFixtures.arcaSources
+        let snapshot = MindControl.FlowSnapshot(root: URL(fileURLWithPath: "/tmp/mc-labels"), flowData: nil, layoutData: nil,
+                                                sourceFiles: files.keys.sorted(), read: { files[$0] })
+        c.show(.init(map: FlowFixtures.arca, report: MindControl.FlowCheck.run(map: FlowFixtures.arca, snapshot: snapshot),
+                     saved: [:], generation: 1), root: URL(fileURLWithPath: "/tmp/mc-labels"))
+        if let zoom { c.camera = MindControl.PanZoomCamera(center: c.camera.center, zoom: zoom) }
+        if let feature { c.selectFeature(feature) }
+        return c.labels()
+    }
+
+    private static func footprint(_ label: MindControl.PlacedLabel) -> CGRect {
+        label.hasBackground
+            ? label.frame.insetBy(dx: -MindControl.LabelOverlayView.pillPadding.width, dy: -MindControl.LabelOverlayView.pillPadding.height)
+            : label.frame
+    }
+
+    private static func expectNoOverlaps(_ labels: [MindControl.PlacedLabel]) {
+        for (i, a) in labels.enumerated() {
+            for b in labels[(i + 1)...] {
+                #expect(!footprint(a).intersects(footprint(b)), "\(a.text) overlaps \(b.text)")
+            }
+        }
+    }
+
+    @MainActor
+    @Test func parallelArrowsUpCloseAllGetTheirLabels() {
+        let placed = plannedTexts(zoom: 1.3)
+        let texts = Set(placed.map(\.text))
+        #expect(texts.isSuperset(of: ["PCM16 24 kHz", "commit turn", "discard turn"]), "\(texts.sorted())")
+        Self.expectNoOverlaps(placed)
+    }
+
+    @MainActor
+    @Test func aLitFeatureLabelsEveryStepAtFitZoom() {
+        let placed = plannedTexts(feature: "speech")
+        let texts = Set(placed.map(\.text))
+        #expect(texts.isSuperset(of: ["begin / end", "press DOWN / UP"]), "\(texts.sorted())")
+        Self.expectNoOverlaps(placed)
     }
 }
 #endif

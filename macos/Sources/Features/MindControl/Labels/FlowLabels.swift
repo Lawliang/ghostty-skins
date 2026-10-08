@@ -8,6 +8,8 @@ extension MindControl {
         /// View points from a system's name to its summary, centre to centre. Fonts don't scale with zoom, so a gap
         /// in world points would push the summary into the name when zoomed out.
         static let summaryGap: CGFloat = 20
+        /// Where else on its curve an arrow label may sit, in order of preference, when the midpoint is taken.
+        static let alongCurve: [CGFloat] = [0.35, 0.65, 0.25, 0.75]
 
         static func candidates(layout: MapLayout, curves: [String: Curve], camera: PanZoomCamera, viewSize: CGSize,
                                litFlows: Set<String>, showControl: Bool) -> [LabelCandidate] {
@@ -64,9 +66,11 @@ extension MindControl {
                 guard fixed || arrow.level == arrowLevel, let curve = curves[arrow.id] else { continue }
                 let lit = !litFlows.isDisjoint(with: arrow.flowIDs)
                 guard fixed || lit || (arrow.level == .part && zoom >= 1.0) else { continue }
+                // Parallel arrows share a midpoint area, so each label can also sit further along its own curve.
                 out.append(LabelCandidate(id: arrow.id, text: arrow.label, anchor: camera.toScreen(curve.mid, viewSize: viewSize),
                                           leading: false, fontSize: 10.5, bold: false, opacity: 0.9, priority: lit ? 2 : 5,
-                                          background: true, maxWidth: nil))
+                                          background: true, maxWidth: nil,
+                                          alternates: alongCurve.map { camera.toScreen(curve.point(at: $0), viewSize: viewSize) }))
             }
             return out
         }
