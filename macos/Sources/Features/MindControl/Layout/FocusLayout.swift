@@ -57,8 +57,8 @@ extension MindControl {
             return MapLayout(boxes: boxes, arrows: arrows, fixedLevel: true)
         }
 
-        /// Only the route's systems, one column each in step order; conditional steps get their own lanes and
-        /// their arrows bend toward them. Nil when nothing on the route can be drawn.
+        /// Only the route's systems, one column each in step order; conditional steps get their own lanes, and
+        /// conditional arrows within one row bend toward theirs. Nil when nothing on the route can be drawn.
         static func feature(_ id: String, map: FlowMap, broken: Set<String>) -> MapLayout? {
             guard let feature = map.feature(id) else { return nil }
             // A step the route repeats is drawn once: arrow ids must be unique.
@@ -108,12 +108,16 @@ extension MindControl {
                                      title: system.name, subtitle: nil, external: system.external, tint: tint(system, map), partCount: 0)
             }
             guard !boxes.isEmpty else { return nil }
-            // A conditional arrow bends into its condition's lane, even between systems already on the main line.
+            // A conditional arrow between two boxes in the same row bends toward its condition's lane, so the
+            // branch shows even when both outcomes reach systems already placed. An arrow that already changes
+            // row stays straight: bending it would curl it back over its source.
             let arrows = steps.compactMap { flow -> MapLayout.ArrowSpec? in
                 guard flow.from.system != flow.to.system else { return nil }
+                let sameRow = placed[flow.from.system]?.y == placed[flow.to.system]?.y
+                let bend = sameRow ? CGFloat(lane(for: flow.when, conditions: conditions)) * laneStep : 0
                 return MapLayout.ArrowSpec(id: "flow:\(flow.id)", level: .system, from: flow.from.system, to: flow.to.system,
                                            kind: flow.kind, flowIDs: [flow.id], label: flow.carries, conditional: flow.when != nil, weight: 1,
-                                           bend: CGFloat(lane(for: flow.when, conditions: conditions)) * laneStep)
+                                           bend: bend)
             }
             return MapLayout(boxes: boxes, arrows: arrows, fixedLevel: true)
         }

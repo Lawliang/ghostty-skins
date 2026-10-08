@@ -182,19 +182,24 @@ struct FocusLayoutTests {
         #expect(bends["flow:pcm"] == 0)
     }
 
-    @Test func conditionalArrowsBendEvenWhenTheirTargetIsInTheLane() throws {
+    @Test func conditionalArrowsIntoALaneStayUnbent() throws {
+        // The targets already sit in their lanes, so a bend would only curl the arrows back over `a`.
         let map = FlowFixtures.map(#"""
         { "version": 1,
-          "systems": [ { "id": "a", "name": "A" }, { "id": "yes", "name": "Yes" }, { "id": "no", "name": "No" },
-                       { "id": "c", "name": "C" } ],
+          "systems": [ { "id": "a", "name": "A" }, { "id": "yes", "name": "Yes" }, { "id": "no", "name": "No" } ],
           "flows": [ { "id": "y", "from": "a", "to": "yes", "kind": "control", "carries": "x", "when": "words heard" },
-                     { "id": "n", "from": "a", "to": "no", "kind": "control", "carries": "x", "when": "nothing heard" },
-                     { "id": "ac", "from": "a", "to": "c", "kind": "data", "carries": "x" } ],
-          "features": [ { "id": "f", "name": "F", "route": ["y", "n", "ac"] } ] }
+                     { "id": "n", "from": "a", "to": "no", "kind": "control", "carries": "x", "when": "nothing heard" } ],
+          "features": [ { "id": "f", "name": "F", "route": ["y", "n"] } ] }
         """#)
         let layout = try #require(FocusLayout.feature("f", map: map, broken: []))
-        let lane = MindControl.LayoutMetrics.systemMinSize.height + FocusLayout.laneGap
-        #expect(layout.arrows.map(\.bend) == [-lane, lane, 0])
+        #expect(layout.arrows.map(\.id) == ["flow:y", "flow:n"])
+        #expect(layout.arrows.map(\.bend) == [0, 0])
+        let a = try #require(layout.box("a")).rect.insetBy(dx: 0.5, dy: 0.5)
+        let curves = MindControl.ArrowRouter.curves(for: layout)
+        for id in ["flow:y", "flow:n"] {
+            let curve = try #require(curves[id])
+            #expect(!(1...100).contains { a.contains(curve.point(at: CGFloat($0) / 100)) }, "\(id) passes over a")
+        }
     }
 
     @Test func aRepeatedStepDrawsOneArrow() throws {
