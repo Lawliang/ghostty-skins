@@ -493,5 +493,63 @@ struct MapControllerTests {
         #expect(c.selection == .box("tap"))
         #expect(c.focusTarget == .system("tap"))
     }
+    @Test func enterInTheSearchFieldSearchesNowBeforeGoingToTheFirstResult() async {
+        let c = controller()
+        await c.searchSettled()
+        // A pause long enough that only a flush could have searched by the time Enter is handled.
+        c.searchDelay = 60_000_000_000
+        c.query = "ble"
+        #expect(c.results.isEmpty)
+        c.submitSearch()
+        #expect(c.selection == .box("ble"))
+        #expect(c.query.isEmpty)
+    }
+
+    @Test func theFocusTargetIsWorkedOutOnChangeNotOnEveryRead() {
+        let c = controller()
+        c.selectFeature("speech")
+        let checks = c.focusTargetChecks
+        for _ in 0..<5 { #expect(c.focusTarget == .feature("speech")) }
+        #expect(c.focusTargetChecks == checks)
+        c.selectFeature("speech")
+        #expect(c.focusTarget == nil)
+        #expect(c.focusTargetChecks > checks)
+    }
+
+    @Test func aReloadThatDropsTheFeatureClearsTheFocusTarget() {
+        let c = controller()
+        c.selectFeature("speech")
+        let trimmed = FlowFixtures.map(FlowFixtures.arcaJSON.replacingOccurrences(of: "\"id\": \"speech\"", with: "\"id\": \"talk\""))
+        c.show(loaded(trimmed, files: FlowFixtures.arcaSources, generation: 2), root: URL(fileURLWithPath: "/tmp/mc-ctl"))
+        #expect(c.selectedFeature == nil)
+        #expect(c.focusTarget == nil)
+    }
+
+    /// Keys the map doesn't use (Tab, arrows, anything with ⌘) go up the responder chain, so Tab can move to the
+    /// search field and menu shortcuts still work.
+    @Test func theMapPassesOnKeysItDoesNotUse() throws {
+        final class Recorder: NSResponder {
+            var keys: [UInt16] = []
+            override func keyDown(with event: NSEvent) { keys.append(event.keyCode) }
+        }
+        let c = controller()
+        let view = MindControl.FlowMTKView(frame: CGRect(x: 0, y: 0, width: 1200, height: 800), device: nil)
+        view.controller = c
+        let recorder = Recorder()
+        view.nextResponder = recorder
+        func key(_ characters: String, code: UInt16, modifiers: NSEvent.ModifierFlags = []) throws -> NSEvent {
+            try #require(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: modifiers, timestamp: 0, windowNumber: 0,
+                                          context: nil, characters: characters, charactersIgnoringModifiers: characters,
+                                          isARepeat: false, keyCode: code))
+        }
+        view.keyDown(with: try key("\t", code: 48))
+        view.keyDown(with: try key(String(UnicodeScalar(UInt16(NSRightArrowFunctionKey))!), code: 124))
+        view.keyDown(with: try key("k", code: 40, modifiers: .command))
+        #expect(recorder.keys == [48, 124, 40])
+        // Letters still start a search and stay with the map.
+        view.keyDown(with: try key("a", code: 0))
+        #expect(c.query == "a")
+        #expect(recorder.keys == [48, 124, 40])
+    }
 }
 #endif

@@ -68,18 +68,24 @@ extension MindControl {
             return super.performKeyEquivalent(with: event)
         }
 
+        /// Esc, F and typing (letters, digits, space, ".") are the map's; every other key goes up the responder
+        /// chain, so Tab moves keyboard focus and menu shortcuts still work.
         override func keyDown(with event: NSEvent) {
-            guard let controller else { return }
+            guard let controller else { return super.keyDown(with: event) }
             if event.keyCode == 53 {
                 if !controller.escape() { controller.onClose() }
                 return
             }
             let modifiers = event.modifierFlags.intersection([.command, .control, .option])
-            guard modifiers.isEmpty, let characters = event.charactersIgnoringModifiers, !characters.isEmpty else { return }
+            guard modifiers.isEmpty, let characters = event.charactersIgnoringModifiers, !characters.isEmpty else {
+                return super.keyDown(with: event)
+            }
             if characters.lowercased() == "f", controller.query.isEmpty, controller.focusTarget != nil {
                 controller.enterFocus()
             } else if characters.unicodeScalars.allSatisfy({ CharacterSet.alphanumerics.contains($0) || $0 == " " || $0 == "." }) {
                 controller.beginSearch(with: characters)
+            } else {
+                super.keyDown(with: event)
             }
         }
 
@@ -150,6 +156,10 @@ extension MindControl {
             view.preferredFramesPerSecond = 120
             view.clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
             renderer.onFrame = { [weak view] in view?.frameDidRender() }
+            controller.focusMap = { [weak view] in
+                guard let view, let window = view.window else { return }
+                window.makeFirstResponder(view)
+            }
             controller.attach(renderer)
             return view
         }

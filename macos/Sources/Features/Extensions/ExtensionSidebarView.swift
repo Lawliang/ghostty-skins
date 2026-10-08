@@ -216,7 +216,7 @@ struct ExtensionContentView: View {
             MindControl.Panel(model: model.mindControl, onClose: {
                 // Esc; guarded so a key-repeated Esc can't reopen it.
                 if model.active == .codebaseVisualizer { model.select(.codebaseVisualizer) }
-            })
+            }, openTab: model.openTab)
         }
     }
 }

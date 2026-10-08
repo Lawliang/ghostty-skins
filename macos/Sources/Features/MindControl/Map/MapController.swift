@@ -60,9 +60,20 @@ extension MindControl {
 
         @Published var mode: SceneStyle.Mode = .map { didSet { refresh() } }
         @Published var showControl = true { didSet { refresh() } }
-        @Published private(set) var selectedFeature: String?
+        @Published private(set) var selectedFeature: String? { didSet { updateFocusTarget() } }
         /// Setting it (to anything) ends a feature step's highlight.
-        @Published private(set) var selection: Selection? { didSet { stepHighlight = nil } }
+        @Published private(set) var selection: Selection? {
+            didSet {
+                stepHighlight = nil
+                updateFocusTarget()
+            }
+        }
+        /// What F or the Focus button opens: the selected system (or a part's system), else the selected feature.
+        /// Nil when there's nothing to focus or it has nothing to draw. Worked out when the selection, feature or
+        /// map changes, since that builds a focus layout; reading it is free.
+        @Published private(set) var focusTarget: Focus?
+        /// How many times `focusTarget` was worked out.
+        private(set) var focusTargetChecks = 0
         @Published private(set) var focus: Focus?
         /// Searched off the main actor once typing pauses for `searchDelay`; clearing it clears `results` at once.
         @Published var query = "" { didSet { if query != oldValue { scheduleSearch(after: searchDelay) } } }
@@ -71,6 +82,8 @@ extension MindControl {
         @Published private(set) var searchRequest = 0
 
         var onClose: () -> Void = {}
+        /// Gives the map view keyboard focus again, so Esc, F and typing reach it (set by the view).
+        var focusMap: () -> Void = {}
         var openFile: (URL, Int?) -> Void = { FileOpener.open($0, line: $1) }
 
         private(set) var root: URL?
@@ -163,6 +176,7 @@ extension MindControl {
             }
             if let current = selection, !exists(current) { selection = nil }
             if let step = stepHighlight, !exists(.arrow(step)) { stepHighlight = nil }
+            updateFocusTarget()
             refresh()
             // The spec fits the whole map on open and on every reload; focus views keep their own framing.
             if focus == nil { fit(animated: !firstShow) }
@@ -289,18 +303,18 @@ extension MindControl {
             }
         }
 
-        /// What F or the Focus button opens: the selected system (or a part's system), else the selected feature.
-        /// Nil when there's nothing to focus or it has nothing to draw.
-        var focusTarget: Focus? {
-            let target: Focus
+        private func updateFocusTarget() {
+            focusTargetChecks += 1
+            let target: Focus?
             if case .box(let id) = selection, let system = systemID(of: id) {
                 target = .system(system)
             } else if let feature = selectedFeature {
                 target = .feature(feature)
             } else {
-                return nil
+                target = nil
             }
-            return focusLayout(target) == nil ? nil : target
+            let next = target.flatMap { focusLayout($0) == nil ? nil : $0 }
+            if next != focusTarget { focusTarget = next }
         }
 
         /// F: focus `focusTarget`, if any.
@@ -368,6 +382,12 @@ extension MindControl {
         func beginSearch(with text: String) {
             query += text
             searchRequest += 1
+        }
+
+        /// Enter in the search field: search now (results wait for typing to pause), then go to the first result.
+        func submitSearch() {
+            flushSearch()
+            if let first = results.first { navigate(to: first) }
         }
 
         /// Searches the query now with the index as it stands, skipping the typing pause (Enter in the field).
