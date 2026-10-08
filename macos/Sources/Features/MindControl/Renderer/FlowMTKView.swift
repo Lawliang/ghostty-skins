@@ -90,7 +90,7 @@ extension MindControl {
             downPoint = p
             lastPoint = p
             moved = false
-            if case .box(let id) = controller.hit(at: p), controller.canDrag(id) { dragSystem = id } else { dragSystem = nil }
+            dragSystem = controller.dragTarget(at: p)
         }
 
         override func mouseDragged(with event: NSEvent) {

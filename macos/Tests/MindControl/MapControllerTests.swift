@@ -2,6 +2,7 @@
 import CoreGraphics
 import Foundation
 import QuartzCore
+import AppKit
 import Testing
 @testable import Ghostty
 
@@ -234,6 +235,99 @@ struct MapControllerTests {
         c.goToStep("pcm")
         #expect(c.focus == .feature("speech"))
         #expect(c.selection == .arrow("flow:pcm"))
+    }
+
+    // MARK: Fix round 1
+
+    @Test func walkingAFeaturesStepsKeepsTheStepList() {
+        let c = controller()
+        c.selectFeature("speech")
+        c.goToStep("pcm")
+        if case .feature = c.sidePanel {} else { Issue.record("\(c.sidePanel)") }
+        #expect(c.selection == nil)
+        #expect(c.style.selected == "flow:pcm")
+        c.goToStep("send")
+        if case .feature = c.sidePanel {} else { Issue.record("\(c.sidePanel)") }
+        #expect(c.style.selected == "flow:send")
+        // A click elsewhere is a real selection again.
+        c.click(at: .zero)
+        #expect(c.style.selected == nil)
+    }
+
+    @Test func aStepOffTheFeaturesRouteIsSelected() {
+        let c = controller(showing: FlowFixtures.map(Self.clashJSON))
+        c.selectFeature("dup")
+        c.goToStep("relay")
+        #expect(c.selection == .arrow("flow:relay"))
+    }
+
+    @Test func goingToAStepZoomsPastThePartCrossFade() {
+        let c = controller()
+        c.camera = MindControl.PanZoomCamera(center: .zero, zoom: 0.5)
+        c.goToStep("pcm")
+        #expect(c.camera.zoom >= MindControl.ZoomLevels.systemsToParts.upperBound)
+    }
+
+    @Test func anotherProjectNeverAnswersFromTheOldIndex() async {
+        let c = controller()
+        await c.searchSettled()
+        c.show(loaded(FlowFixtures.map(Self.clashJSON)), root: URL(fileURLWithPath: "/tmp/mc-other"))
+        #expect(c.results.isEmpty)
+        c.query = "speech"
+        c.flushSearch()
+        #expect(c.results.isEmpty)
+        c.query = "relay"
+        await c.searchSettled()
+        #expect(c.results.first?.target == .system("relay"))
+    }
+
+    @Test func aResultMissingFromTheMapIsIgnored() {
+        let c = controller(showing: FlowFixtures.map(Self.clashJSON))
+        c.navigate(to: MindControl.SearchResult(kind: .feature, title: "Speech", detail: "", target: .feature("speech")))
+        #expect(c.selectedFeature == nil)
+        c.navigate(to: MindControl.SearchResult(kind: .system, title: "Audio", detail: "", target: .system("audio")))
+        c.navigate(to: MindControl.SearchResult(kind: .part, title: "Gate", detail: "", target: .part("audio.gate")))
+        c.navigate(to: MindControl.SearchResult(kind: .file, title: "A.swift", detail: "", target: .file(path: "a/A.swift", system: "audio")))
+        #expect(c.selection == nil)
+        #expect(c.mode == .map)
+    }
+
+    @Test func grabbingAPartOrAnInnerArrowDragsItsSystem() throws {
+        let c = controller()
+        let gate = try #require(c.baseLayout.box("audio.gate")).rect
+        c.camera = MindControl.PanZoomCamera(center: CGPoint(x: gate.midX, y: gate.midY), zoom: 1.5)
+        #expect(c.dragTarget(at: c.camera.toScreen(CGPoint(x: gate.midX, y: gate.midY), viewSize: c.viewSize)) == "audio")
+        let check = try #require(c.curves["flow:check"]).mid
+        #expect(c.hit(at: c.camera.toScreen(check, viewSize: c.viewSize)) == .arrow("flow:check"))
+        #expect(c.dragTarget(at: c.camera.toScreen(check, viewSize: c.viewSize)) == "audio")
+        let pcm = try #require(c.curves["flow:pcm"]).mid
+        #expect(c.dragTarget(at: c.camera.toScreen(pcm, viewSize: c.viewSize)) == nil)
+        // Clicks keep their own targets.
+        c.click(at: c.camera.toScreen(CGPoint(x: gate.midX, y: gate.midY), viewSize: c.viewSize))
+        #expect(c.selection == .box("audio.gate"))
+    }
+
+    @Test func draggingAPartInTheViewMovesItsSystemAndSavesIt() throws {
+        let project = try TempProject()
+        let c = controller(root: project.url)
+        let view = MindControl.FlowMTKView(frame: CGRect(x: 0, y: 0, width: 1200, height: 800), device: nil)
+        view.controller = c
+        let gate = try #require(c.baseLayout.box("audio.gate")).rect
+        let before = try #require(c.baseLayout.box("audio")).rect
+        c.camera = MindControl.PanZoomCamera(center: CGPoint(x: gate.midX, y: gate.midY), zoom: 1.5)
+        // The view's centre is the gate's centre; window coordinates have a bottom-left origin.
+        func event(_ type: NSEvent.EventType, x: CGFloat) throws -> NSEvent {
+            try #require(NSEvent.mouseEvent(with: type, location: CGPoint(x: x, y: 400), modifierFlags: [], timestamp: 0,
+                                            windowNumber: 0, context: nil, eventNumber: 0, clickCount: 1, pressure: 1))
+        }
+        view.mouseDown(with: try event(.leftMouseDown, x: 600))
+        view.mouseDragged(with: try event(.leftMouseDragged, x: 660))
+        view.mouseDragged(with: try event(.leftMouseDragged, x: 690))
+        view.mouseUp(with: try event(.leftMouseUp, x: 690))
+        let after = try #require(c.baseLayout.box("audio")).rect
+        #expect(abs(after.minX - (before.minX + 90 / 1.5)) < 1e-6)
+        let data = try Data(contentsOf: project.url.appendingPathComponent(".mindcontrol/layout.json"))
+        #expect(MindControl.LayoutStore.decode(data)["audio"] == after.origin)
     }
 
     @Test func goingToAHiddenControlStepShowsControlArrows() {

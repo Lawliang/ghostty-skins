@@ -61,7 +61,8 @@ extension MindControl {
         @Published var mode: SceneStyle.Mode = .map { didSet { refresh() } }
         @Published var showControl = true { didSet { refresh() } }
         @Published private(set) var selectedFeature: String?
-        @Published private(set) var selection: Selection?
+        /// Setting it (to anything) ends a feature step's highlight.
+        @Published private(set) var selection: Selection? { didSet { stepHighlight = nil } }
         @Published private(set) var focus: Focus?
         /// Searched off the main actor once typing pauses for `searchDelay`; clearing it clears `results` at once.
         @Published var query = "" { didSet { if query != oldValue { scheduleSearch(after: searchDelay) } } }
@@ -88,6 +89,9 @@ extension MindControl {
         var searchDelay: UInt64 = MapController.searchPause
 
         private var fade: [String: Float] = [:]
+        /// The arrow of the selected feature's step last clicked in the side panel. Drawn as selected without
+        /// becoming the selection, so the panel keeps listing the feature's steps.
+        private var stepHighlight: String?
         private var transition: Transition?
         private var pulse: (id: String, until: CFTimeInterval)?
         private var searchIndex: FlowSearch?
@@ -133,6 +137,9 @@ extension MindControl {
                 cameraBeforeFocus = nil
                 pulse = nil
                 query = ""
+                // The old project's index must not answer while the new one builds.
+                searchIndex = nil
+                results = []
             }
             loadedGeneration = loaded.generation
             self.root = root
@@ -155,6 +162,7 @@ extension MindControl {
                 layout = baseLayout
             }
             if let current = selection, !exists(current) { selection = nil }
+            if let step = stepHighlight, !exists(.arrow(step)) { stepHighlight = nil }
             refresh()
             // The spec fits the whole map on open and on every reload; focus views keep their own framing.
             if focus == nil { fit(animated: !firstShow) }
@@ -192,7 +200,7 @@ extension MindControl {
             }
             switch selection {
             case .box(let id), .arrow(let id): style.selected = id
-            case nil: break
+            case nil: style.selected = stepHighlight
             }
             style.pulsed = pulse?.id
             style.fade = fade
@@ -259,6 +267,7 @@ extension MindControl {
         func selectFeature(_ id: String?) {
             selectedFeature = id == selectedFeature ? nil : id
             if selectedFeature != nil { selection = nil }
+            stepHighlight = nil
             refresh()
         }
 
@@ -406,7 +415,9 @@ extension MindControl {
         }
 
         /// Enter on a result: leave focus, move to it, select and pulse it.
+        /// A result whose subject the current map lacks (one left from an older index) is ignored.
         func navigate(to result: SearchResult) {
+            guard let map, Self.contains(result.target, map: map, layout: baseLayout) else { return }
             query = ""
             leaveFocus()
             switch result.target {
@@ -442,8 +453,10 @@ extension MindControl {
             move(to: PanZoomCamera(center: CGPoint(x: box.rect.midX, y: box.rect.midY), zoom: max(camera.zoom, minZoom)), animated: true)
         }
 
-        /// A side panel step was clicked: move to that flow's arrow and select it. A flow the focus view doesn't
-        /// draw is shown on the main map. A hidden control arrow is shown.
+        /// A side panel step was clicked: move to that flow's arrow. A step on the selected feature's route is
+        /// highlighted and the panel keeps the feature's steps; any other flow becomes the selection. A flow the
+        /// focus view doesn't draw is shown on the main map. A hidden control arrow is shown. Zooms past the
+        /// systems-to-parts cross-fade so the part-level arrow shows in full.
         func goToStep(_ flowID: String) {
             let id = "flow:\(flowID)"
             if focus != nil, !(transition?.to ?? layout).arrows.contains(where: { $0.id == id }) { exitFocus() }
@@ -451,9 +464,14 @@ extension MindControl {
             let target = transition?.to ?? layout
             guard let curve = transition == nil ? curves[id] : ArrowRouter.curves(for: target)[id],
                   let arrow = target.arrows.first(where: { $0.id == id }) else { return }
-            selection = .arrow(id)
+            if let feature = selectedFeature.flatMap({ map?.feature($0) }), feature.route.contains(flowID) {
+                selection = nil
+                stepHighlight = id
+            } else {
+                selection = .arrow(id)
+            }
             if arrow.kind == .control, !showControl { showControl = true }
-            let zoom = target.fixedLevel ? camera.zoom : max(camera.zoom, 1.1)
+            let zoom = target.fixedLevel ? camera.zoom : max(camera.zoom, ZoomLevels.systemsToParts.upperBound)
             move(to: PanZoomCamera(center: curve.mid, zoom: zoom), animated: true)
             refresh()
         }
@@ -559,6 +577,24 @@ extension MindControl {
             camera = next
         }
 
+        /// The system a mouse-down at `point` would move: the system itself, a part's system, or the system an
+        /// arrow between two of its own parts sits in. Nil when that can't be dragged (then the drag pans).
+        func dragTarget(at point: CGPoint) -> String? {
+            let system: String?
+            switch hit(at: point) {
+            case .box(let id):
+                system = systemID(of: id)
+            case .arrow(let id):
+                guard let arrow = layout.arrows.first(where: { $0.id == id }), let from = systemID(of: arrow.from),
+                      from == systemID(of: arrow.to) else { return nil }
+                system = from
+            case nil:
+                system = nil
+            }
+            guard let system, canDrag(system) else { return nil }
+            return system
+        }
+
         func canDrag(_ id: String) -> Bool {
             focus == nil && baseLayout.box(id)?.kind == .system
         }
@@ -634,6 +670,16 @@ extension MindControl {
         }
 
         // MARK: Helpers
+
+        private static func contains(_ target: SearchResult.Target, map: FlowMap, layout: MapLayout) -> Bool {
+            switch target {
+            case .feature(let id): return map.feature(id) != nil
+            case .system(let id): return map.system(id) != nil
+            case .part(let key): return layout.box(key)?.kind == .part
+            case .file(_, let system?): return map.system(system) != nil
+            case .file(_, nil): return true
+            }
+        }
 
         func systemID(of boxID: String) -> String? {
             guard !boxID.hasPrefix("zone:") else { return nil }
