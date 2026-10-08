@@ -108,6 +108,10 @@ struct ClaudeLauncherTests {
         }
     }
 
+    @Test func draftAddsTheUpkeepRuleOnlyWhenItIsMissing() {
+        #expect(ClaudePrompts.draft(projectName: "arca").contains("unless it's already there"))
+    }
+
     /// The example Claude copies must itself be a valid, healthy flow file.
     @Test func promptExampleParsesAndPassesTheChecks() throws {
         let rules = ClaudePrompts.formatAndRules

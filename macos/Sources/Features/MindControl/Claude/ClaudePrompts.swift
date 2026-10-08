@@ -22,7 +22,8 @@ extension MindControl {
             1. Read the code and the docs.
             2. Write `.mindcontrol/flow.json`. Find the hand-off for every flow in the code and record it in "via". \
             Use "when" for branches.
-            3. Add this line to the project's CLAUDE.md (create the file if it's missing), under a "MindControl" heading if there's no better place:
+            3. Add this line to the project's CLAUDE.md (create the file if it's missing), under a "MindControl" heading if there's \
+            no better place, unless it's already there:
                \(upkeepRule)
             4. Check the file is valid JSON, for example with `python3 -m json.tool .mindcontrol/flow.json`.
 
