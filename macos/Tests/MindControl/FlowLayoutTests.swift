@@ -75,6 +75,67 @@ struct FlowLayoutTests {
         #expect(rect(layout, "zone:a").maxX < rect(layout, "zone:b").minX)
     }
 
+    @Test func controlFlowsNeverMoveZones() {
+        // Zones a, b and c hold our own systems; x holds only an outside one.
+        func layout(_ flows: String) -> MapLayout {
+            FlowLayout.layout(map: FlowFixtures.map(#"""
+            { "version": 1,
+              "zones": [ { "id": "a", "name": "A" }, { "id": "b", "name": "B" }, { "id": "c", "name": "C" },
+                         { "id": "x", "name": "X" } ],
+              "systems": [ { "id": "one", "name": "One", "zone": "a" }, { "id": "two", "name": "Two", "zone": "b" },
+                           { "id": "three", "name": "Three", "zone": "c" },
+                           { "id": "out", "name": "Out", "zone": "x", "external": true } ],
+              "flows": [ { "id": "ab", "from": "one", "to": "two", "kind": "data", "carries": "x" },
+                         { "id": "bc", "from": "two", "to": "three", "kind": "data", "carries": "x" }\#(flows) ] }
+            """#), broken: [])
+        }
+        let toX = #", { "id": "ctl", "from": "one", "to": "out", "kind": "control", "carries": "x" }"#
+        let fromX = #", { "id": "ctl", "from": "out", "to": "one", "kind": "control", "carries": "x" }"#
+        let dataToX = #", { "id": "ax", "from": "one", "to": "out", "kind": "data", "carries": "x" }"#
+        let cases: [(base: String, extra: String)] = [("", toX), ("", fromX), (dataToX, toX), (dataToX, fromX)]
+        for (base, extra) in cases {
+            let without = layout(base), with = layout(base + extra)
+            for z in ["a", "b", "c", "x"] {
+                #expect(rect(with, "zone:\(z)") == rect(without, "zone:\(z)"), "zone \(z), data \(base), control \(extra)")
+            }
+        }
+    }
+
+    @Test func outsideZoneThatOnlyReceivesSitsRightmost() {
+        // Declared first, and fed from the first column, so only the rightmost rule puts x after c.
+        let map = FlowFixtures.map(#"""
+        { "version": 1,
+          "zones": [ { "id": "x", "name": "X" }, { "id": "a", "name": "A" }, { "id": "b", "name": "B" },
+                     { "id": "c", "name": "C" } ],
+          "systems": [ { "id": "out", "name": "Out", "zone": "x", "external": true },
+                       { "id": "one", "name": "One", "zone": "a" }, { "id": "two", "name": "Two", "zone": "b" },
+                       { "id": "three", "name": "Three", "zone": "c" } ],
+          "flows": [ { "id": "ab", "from": "one", "to": "two", "kind": "data", "carries": "x" },
+                     { "id": "bc", "from": "two", "to": "three", "kind": "data", "carries": "x" },
+                     { "id": "ax", "from": "one", "to": "out", "kind": "data", "carries": "x" } ] }
+        """#)
+        let layout = FlowLayout.layout(map: map, broken: [])
+        for z in ["a", "b", "c"] { #expect(rect(layout, "zone:\(z)").maxX < rect(layout, "zone:x").minX, "zone \(z)") }
+    }
+
+    @Test func laterZoneFlowInATwoWayPairIsTheReturnArrow() {
+        // phone and cloud send data both ways; cloud is declared later, so cloud > phone is the return arrow
+        // and phone sits with src in the first column. Breaking the cycle anywhere else gives src | cloud | phone.
+        let map = FlowFixtures.map(#"""
+        { "version": 1,
+          "zones": [ { "id": "phone", "name": "Phone" }, { "id": "cloud", "name": "Cloud" }, { "id": "src", "name": "Src" } ],
+          "systems": [ { "id": "app", "name": "App", "zone": "phone" }, { "id": "worker", "name": "Worker", "zone": "cloud" },
+                       { "id": "feed", "name": "Feed", "zone": "src" } ],
+          "flows": [ { "id": "1", "from": "feed", "to": "worker", "kind": "data", "carries": "x" },
+                     { "id": "2", "from": "app", "to": "worker", "kind": "data", "carries": "x" },
+                     { "id": "3", "from": "worker", "to": "app", "kind": "data", "carries": "x" } ] }
+        """#)
+        let layout = FlowLayout.layout(map: map, broken: [])
+        let phone = rect(layout, "zone:phone"), cloud = rect(layout, "zone:cloud"), src = rect(layout, "zone:src")
+        #expect(phone.maxX < cloud.minX)
+        #expect(src.maxX < cloud.minX)
+    }
+
     @Test func dataSourceSitsLeftOfWhatItFeeds() {
         let layout = FlowLayout.layout(map: FlowFixtures.arca, broken: [])
         #expect(rect(layout, "audio").maxX < rect(layout, "agent").minX)

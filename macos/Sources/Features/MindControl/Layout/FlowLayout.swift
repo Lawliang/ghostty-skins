@@ -33,13 +33,14 @@ extension MindControl {
                              content.origins.mapValues { CGPoint(x: $0.x + M.zonePad, y: $0.y + M.zonePad + label) })
             }
 
-            // Zones. Ones made only of outside systems frame the map, whatever kind of flow crosses their border:
-            // those nothing flows into sit on the far left (so does one with no flows at all), those that only
-            // receive sit on the far right. Every other zone is layered by the data flowing between zones.
+            // Zones. Ones made only of outside systems frame the map, judged by the data crossing their border:
+            // those no data flows into sit on the far left (so does one with no data flows at all), those that
+            // receive data and send none sit on the far right. Every other zone is layered by the data flowing
+            // between zones.
             let declared = map.zones.map(\.id) + [""]
             func declaration(_ z: String) -> Int { declared.firstIndex(of: z) ?? declared.count }
             func byDeclaration(_ a: String, _ b: String) -> Bool { (declaration(a), a) < (declaration(b), b) }
-            let crossing = flows.filter { zone(of: $0.from.system) != zone(of: $0.to.system) }
+            let crossing = data.filter { zone(of: $0.from.system) != zone(of: $0.to.system) }
             let sendingZones = Set(crossing.map { zone(of: $0.from.system) })
             let receivingZones = Set(crossing.map { zone(of: $0.to.system) })
             let outside = usedZones.filter { z in map.systems.filter { zone(of: $0.id) == z }.allSatisfy(\.external) }
