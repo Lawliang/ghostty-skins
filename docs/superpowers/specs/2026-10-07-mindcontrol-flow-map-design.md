@@ -41,6 +41,10 @@ part or file. Nothing is drawn that does not describe a real flow.
 | Trusting arrows | Each flow names its hand-off in `via`, checked against the code. |
 | Box size | Boxes are sized for their parts; zooming never moves anything. |
 | Map growing too big | Soft density warnings; nothing blocked. |
+| Too many visual signals | Two views: Map (how the app works) and Health (is the map accurate). |
+| Zoning in | A Focus view for one system or one feature, laid out fresh. |
+| Seeing what a branch changed | Later. Built for now: maps load from any git revision, ids are stable, the view switch has room for Changes. |
+| The whole project at a glance | Zones: tinted regions for where systems run (ring, phone, relay, cloud). |
 | Wrong folder | The header shows the project path with a Change… picker; Draft and Refresh are off at `~`, `/` and outside git. |
 
 ## The flow file
@@ -52,15 +56,22 @@ folder outside git). Committed with the code. Dragged positions go in
 ```json
 {
   "version": 1,
+  "zones": [
+    { "id": "ring", "name": "Ring" },
+    { "id": "phone", "name": "Phone" },
+    { "id": "relay", "name": "Relay server" },
+    { "id": "cloud", "name": "Cloud services" }
+  ],
   "systems": [
-    { "id": "audio", "name": "Audio", "summary": "Mic capture, the words-heard check, playback.",
+    { "id": "audio", "name": "Audio", "zone": "phone",
+      "summary": "Mic capture, the words-heard check, playback.",
       "paths": ["app/Sources/Audio/**"],
       "parts": [
         { "id": "capture", "name": "AudioCapture", "anchor": "AudioCapture" },
         { "id": "gate",    "name": "SpeechGate",   "anchor": "SpeechGate" },
         { "id": "relay",   "name": "pipe",         "anchor": "relay/src/pipe.ts" }
       ] },
-    { "id": "openai", "name": "OpenAI Realtime", "external": true }
+    { "id": "openai", "name": "OpenAI Realtime", "zone": "cloud", "external": true }
   ],
   "flows": [
     { "id": "pcm", "from": "audio.capture", "to": "agent", "kind": "data",
@@ -83,8 +94,11 @@ Rules:
 - `id`s are lowercase letters, digits and `-`, unique within their list. A part
   is addressed as `system.part`.
 - `version` is 1. Any other value is an error naming the supported version.
+- `zones` is optional. Each zone has `id` and `name`. A system's optional
+  `zone` must name one of them. Systems without a zone sit in an unlabelled
+  zone of their own.
 - A system has a `name`. Optional fields: `summary` (one sentence, shown in the
-  side panel), `paths`, `parts` and `external`.
+  side panel and on the box), `zone`, `paths`, `parts` and `external`.
 - `paths` are glob patterns relative to the root (`*` within a folder name,
   `**` across folders). An external system has no `paths` and no `parts`.
 - A part has `id`, `name` and an optional `anchor`. An anchor containing `/`
@@ -141,6 +155,13 @@ Rules:
 
 Deterministic: the same flow file and layout file always give the same picture.
 
+- **Zones first.** Zones are ordered left to right by a layered layout of the
+  data flows between zones. Each zone is a block holding its systems, and the
+  blocks never overlap. A zone's region is drawn as a soft tinted rectangle
+  around its block, its name in large type.
+- **Systems within a zone** use the rules below, scoped to that zone. Flows
+  that cross zones count toward ordering through the zone's edge.
+
 - Systems are placed in columns by the direction of **data** flows, using a
   layered layout:
   - Cycles (OpenAI ↔ agent) are broken by reversing the fewest arrows. Those
@@ -157,25 +178,43 @@ Deterministic: the same flow file and layout file always give the same picture.
 
 ## Rendering and interaction
 
+**Views.** A switch in the header picks the view. Map is the default. The
+switch is built to hold a third view, Changes, which is not part of this
+build.
+
+- **Map** shows how the app works, with six visual signals only: zone regions,
+  system boxes (dashed for external), solid data arrows with pulses, thin
+  dashed control arrows, feature colours, and branch diamonds. Labels as
+  below. Stale and unverified items are drawn normally here.
+- **Health** shows whether the map is accurate. The app is drawn grey; only
+  problems are coloured: stale parts and flows in amber, unverified flows as
+  faint dashes, and errors in red. The side panel lists every issue, and the
+  unmapped files, with age and density warnings at the top. Clicking an issue
+  moves the view to it.
+- A corner indicator in Map view reads "Map healthy" or "N issues". Clicking it
+  switches to Health.
+
 **Look:** dark field, no star dust. Systems are rounded boxes with a soft glow.
 External systems have dashed outlines and are fainter. Data arrows are solid
 curves with pulses moving in the flow's direction. Control arrows are thin,
-dashed, and have no pulses. Stale parts and stale flows are amber. Unverified
-flows are drawn faint. A flow with a `when` gets a small diamond where it
-leaves its source. Bloom and composite as today.
+dashed, and have no pulses. A flow with a `when` gets a small diamond where it
+leaves its source. Bloom and composite as today. Health colours apply only in
+Health view.
 
 **Box size:** a system box is sized to hold its parts at every zoom level, so
 zooming never moves anything. Zoomed out, a box shows its name, its summary,
 and a faint "N parts" hint.
 
-**Zoom levels:**
+**Zoom levels** (three scales of one picture; the file still has two levels):
 
-- **Out:** systems only. Flows between the same two systems merge into one
-  thicker arrow.
+- **Farthest:** zone regions with their names, and one thick arrow per
+  direction between zones. System names fade out.
+- **Out:** systems with names and summaries. Flows between the same two
+  systems merge into one thicker arrow.
 - **In** (past a fixed scale): each system opens in place to show its parts and
   the flows between them. Flows that end at a part attach to that part.
-- Arrow labels (`carries`) show only once their text is readable, using the
-  existing label planner to avoid overlaps.
+- Arrow labels (`carries`) show only when zoomed in, or for the selected
+  feature's route, using the existing label planner to avoid overlaps.
 
 **Controls:**
 
@@ -191,13 +230,29 @@ and a faint "N parts" hint.
 | Click an arrow | Select it; the side panel shows what it carries and its `via` location |
 | Double-click an arrow | Open the file at its `via` line |
 | Control toggle | Show or hide control arrows |
+| Focus button or F | Open Focus view for the selected system or feature |
+| View switch | Map or Health |
 | ⌘F or typing | Search |
-| Esc | Clear search, then the feature or selection, then close MindControl |
+| Esc | Clear search, then leave Focus view, then clear the feature or selection, then close MindControl |
 
 On open, and on every reload, the view fits the whole map.
 
 **Feature bar:** one chip per feature along the top, each with its own colour
 from a fixed palette, in file order.
+
+**Focus view.** A separate view for one subject, entered from the selected
+system or feature and left with Esc or the path at the top ("Arca › Audio").
+Boxes slide from their map positions into the focus layout and back. Focus
+layouts are computed fresh; the main map's layout and `layout.json` are never
+changed by them.
+
+- **System focus:** the system is drawn large in the centre with all its parts
+  and internal flows. Every system it exchanges flows with is a small labelled
+  box at the edge, senders on the left and receivers on the right, with the
+  crossing flows labelled.
+- **Feature focus:** only the systems on the route, laid out as one
+  left-to-right chain in step order. Steps with a `when` split into lanes, one
+  per condition, in route order. All labels are shown.
 
 **Side panel:** on the right. For a feature, a numbered list of its steps:
 "Ring → BLE link · press DOWN / UP", with control steps marked. Consecutive
@@ -279,15 +334,17 @@ New, each with one job:
 
 | Unit | Job |
 |---|---|
+| `FlowSource` | Read `flow.json`, `layout.json` and the source file list from the working tree or from a git revision (`git show`, `git ls-tree`). |
 | `FlowFile` | Decode and validate `flow.json`, with line-numbered errors. |
 | `FlowCheck` | Stale anchors and `via`s, unknown references, path overlaps, unmapped files, age, density. |
-| `FlowLayout` | Layered layout, part layout, saved positions. |
+| `FlowLayout` | Zone blocks, layered layout, part layout, saved positions. |
+| `FocusLayout` | System focus and feature focus layouts, with branch lanes. |
 | `LayoutStore` | Read and write `layout.json`. |
 | `FlowSearch` | Index and rank search results. |
 | `PanZoomCamera` | 2D view transform, fit, animated moves. |
 | `FlowRenderer` + shaders | Boxes, data and control arrows, pulses, highlight, glow. |
 | `FlowPicking` | Hit-testing boxes, parts and arrows in 2D. |
-| `FlowPanel` | Feature bar, side panel, search field, badges, errors, empty state, Draft with Claude. |
+| `FlowPanel` | View switch, feature bar, side panel, search field, health indicator, errors, empty state, Draft and Refresh. |
 | `FlowWatcher` | Reload on changes in `.mindcontrol/`. |
 
 ## Errors
@@ -332,13 +389,22 @@ Unit tests:
   - unmapped files, counted with `SourceFilter`
   - age from a temporary git repo; "not committed yet"; hidden outside git
   - each density warning at its limit
+- `FlowFile`: zones, including a system naming an unknown zone.
+- `FlowSource`: the same map loads from the working tree and from a commit.
 - `FlowLayout`:
   - same input gives the same output
+  - each zone's systems sit inside its block, and blocks do not overlap
+  - zones are ordered by the data flows between them
   - a data source sits left of what it feeds
   - a cycle does not reorder columns
   - external senders sit leftmost and receivers rightmost
   - saved positions override
   - control flows do not move columns
+- `FocusLayout`:
+  - system focus puts senders left and receivers right of the subject
+  - feature focus follows step order, and `when` steps split into lanes
+- Health: the issue count matches the stale, unverified, error, unmapped and
+  density findings.
 - `FlowSearch`: grouping, ranking order, and file and type resolution to a
   system or "no system".
 - Feature routes become numbered steps in order, with `when` groups and
@@ -357,9 +423,23 @@ Acceptance:
 
 The Arca flow file is left uncommitted in Arca for the user to decide.
 
+## Next: Changes view
+
+Not part of this build. Recorded so the foundations above serve it.
+
+A third view comparing the current branch with a base, `main` by default:
+
+1. **Touched systems.** Files changed on the branch, mapped to the systems
+   that own them, shown as glowing systems with a changed-file count.
+2. **Touched flows.** Flows whose `via` location is in a changed file.
+3. **Changed flows.** If `flow.json` differs, the two maps compared by id:
+   added systems and flows in green, removed in red, changed `carries` or
+   routes marked.
+
 ## Out of scope
 
 - Live data, such as showing real traffic on arrows.
 - Generating or updating the flow file without the user starting it.
 - More than two levels of nesting.
 - Editing flows from the map; only positions are edited.
+- The Changes view (above).
