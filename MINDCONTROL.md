@@ -101,9 +101,11 @@ the map. A valid file with no systems says "This map has no systems yet."
   to move it; its position is saved to `layout.json`.
 - **Double-click** a part to open its anchor file, an arrow to open the file at its `via` line, or a
   system to focus it.
-- **Opening files.** A plain text or source file opens in its default app (in Xcode, at the line). An
-  executable, a script that would run (`.command`, `.terminal`, …) or anything that isn't text opens in
-  your source code editor instead, or is shown in Finder. Nothing outside the project is opened.
+- **Opening files.** A file opens in its default app only when that app is a known editor (Xcode, VS
+  Code, Cursor, Windsurf, Zed, Sublime Text, BBEdit, Nova, CotEditor, TextEdit, JetBrains IDEs, MacVim,
+  Emacs). Anything else (a script whose default app would run it, an executable, a `.command`,
+  `.terminal` or `.mobileconfig` file, …) opens in Xcode, or TextEdit without Xcode. Xcode opens at the
+  line. Folders are shown in Finder, and nothing outside the project is opened.
 - **Esc** clears the search, then leaves Focus, then clears the feature or selection, then closes
   MindControl.
 
