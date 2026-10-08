@@ -152,6 +152,39 @@ struct FocusLayoutTests {
         #expect(!overlaps(layout))
     }
 
+    @Test func aConditionalStepInsideItsOwnLaneStaysUnbent() throws {
+        let map = FlowFixtures.map(#"""
+        { "version": 1,
+          "systems": [ { "id": "a", "name": "A" }, { "id": "yes", "name": "Yes" }, { "id": "no", "name": "No" },
+                       { "id": "more", "name": "More" } ],
+          "flows": [ { "id": "y", "from": "a", "to": "yes", "kind": "control", "carries": "x", "when": "words heard" },
+                     { "id": "n", "from": "a", "to": "no", "kind": "control", "carries": "x", "when": "nothing heard" },
+                     { "id": "m", "from": "yes", "to": "more", "kind": "data", "carries": "x", "when": "words heard" } ],
+          "features": [ { "id": "f", "name": "F", "route": ["y", "n", "m"] } ] }
+        """#)
+        let layout = try #require(FocusLayout.feature("f", map: map, broken: []))
+        let m = try #require(layout.arrows.first { $0.id == "flow:m" })
+        #expect(m.bend == 0)
+        // `yes` and `more` both sit in the "words heard" lane; the arrow stays in that row's band.
+        let row = try #require(layout.box("yes")).rect
+        let curve = try #require(MindControl.ArrowRouter.curves(for: layout)["flow:m"])
+        #expect((0...100).allSatisfy { (row.minY...row.maxY).contains(curve.point(at: CGFloat($0) / 100).y) })
+    }
+
+    @Test func anUnconditionalStepInsideALaneStaysUnbent() throws {
+        let map = FlowFixtures.map(#"""
+        { "version": 1,
+          "systems": [ { "id": "a", "name": "A" }, { "id": "yes", "name": "Yes" }, { "id": "also", "name": "Also" } ],
+          "flows": [ { "id": "y", "from": "a", "to": "yes", "kind": "control", "carries": "x", "when": "words heard" },
+                     { "id": "z", "from": "a", "to": "also", "kind": "control", "carries": "x", "when": "words heard" },
+                     { "id": "u", "from": "yes", "to": "also", "kind": "data", "carries": "x" } ],
+          "features": [ { "id": "f", "name": "F", "route": ["y", "z", "u"] } ] }
+        """#)
+        let layout = try #require(FocusLayout.feature("f", map: map, broken: []))
+        #expect(try #require(layout.box("yes")).rect.minY == (try #require(layout.box("also")).rect.minY))
+        #expect(layout.arrows.first { $0.id == "flow:u" }?.bend == 0)
+    }
+
     @Test func aStepFromOneLaneToAnotherMovesRight() throws {
         let map = FlowFixtures.map(#"""
         { "version": 1,
