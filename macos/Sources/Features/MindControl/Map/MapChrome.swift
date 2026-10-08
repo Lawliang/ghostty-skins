@@ -13,6 +13,9 @@ extension MindControl {
 
         static let healthy = Color(red: 0.45, green: 0.85, blue: 0.6)
         static let warning = Color(red: 1, green: 0.7, blue: 0.3)
+        static let reasonFontSize: CGFloat = 11
+        /// The blocked-Refresh caption never gets narrower than this, so its first words stay readable.
+        static let reasonMinWidth: CGFloat = 170
 
         var body: some View {
             HStack(spacing: 10) {
@@ -49,11 +52,11 @@ extension MindControl {
                     // Change… is at the start of this bar.
                     if let reason = Panel.refreshBlockedCaption(in: model.state) {
                         Text(reason)
-                            .font(.system(size: 11))
+                            .font(.system(size: Self.reasonFontSize))
                             .foregroundColor(.orange)
                             .lineLimit(1)
                             .truncationMode(.tail)
-                            .frame(maxWidth: 260, alignment: .trailing)
+                            .frame(minWidth: Self.reasonMinWidth, maxWidth: 260, alignment: .trailing)
                             .layoutPriority(-1)
                             .help("\(reason) Use Change… to map another folder.")
                     }

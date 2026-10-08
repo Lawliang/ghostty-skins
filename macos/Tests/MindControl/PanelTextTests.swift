@@ -1,4 +1,5 @@
 #if os(macOS)
+import AppKit
 import Foundation
 import Testing
 @testable import Ghostty
@@ -67,6 +68,22 @@ struct PanelTextTests {
         // The empty state shows its own reason under Draft.
         #expect(Panel.refreshBlockedCaption(in: .noFlowFile(home)) == nil)
         #expect(Panel.refreshBlockedCaption(in: .loading(home)) == nil)
+    }
+
+    /// In a narrow header the caption keeps enough width for the start of every reason, not just "…".
+    @Test func theRefreshCaptionKeepsTheReasonsFirstWords() {
+        let reasons = [
+            MindControl.ProjectGuard.claudeBlockReason(root: URL(fileURLWithPath: "/Users/me"), home: "/Users/me", isGit: { _ in true }),
+            MindControl.ProjectGuard.claudeBlockReason(root: URL(fileURLWithPath: "/"), home: "/Users/me", isGit: { _ in true }),
+            MindControl.ProjectGuard.claudeBlockReason(root: URL(fileURLWithPath: "/tmp/x"), home: "/Users/me", isGit: { _ in false }),
+        ].compactMap { $0 }
+        #expect(reasons.count == 3)
+        let font = NSFont.systemFont(ofSize: MindControl.MapHeader.reasonFontSize)
+        for reason in reasons {
+            let start = reason.split(separator: " ").prefix(5).joined(separator: " ") + "…"
+            let width = (start as NSString).size(withAttributes: [.font: font]).width
+            #expect(width <= MindControl.MapHeader.reasonMinWidth, "\(start) is \(width) wide")
+        }
     }
 
     /// The copy sheet shows plain text, so its copy must not lean on Markdown.
