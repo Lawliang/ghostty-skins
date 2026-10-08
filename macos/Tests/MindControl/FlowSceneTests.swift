@@ -78,6 +78,28 @@ struct FlowSceneTests {
         #expect(scene.arrows.allSatisfy { $0.pulses == 0 })
     }
 
+    @Test func healthViewDrawsUnverifiedFlowsAsFaintDashesOfEitherKind() throws {
+        var report = MindControl.HealthReport()
+        report.unverifiedFlows = ["pcm", "press"]
+        report.staleFlows = ["event", "reply"]
+        var style = SceneStyle()
+        style.mode = .health
+        let scene = build(style, report: report)
+        func arrow(_ id: String) throws -> MCArrowInstance {
+            scene.arrows[try #require(layout.arrows.firstIndex { $0.id == "flow:\(id)" })]
+        }
+        // Healthy references of each kind: send (data), begin (control).
+        let pcm = try arrow("pcm"), press = try arrow("press"), send = try arrow("send"), begin = try arrow("begin")
+        #expect(pcm.dashed > 0, "an unverified data flow is dashed")
+        #expect(brightness(pcm.color) < 0.5 * brightness(send.color), "an unverified data flow is fainter than a healthy one")
+        #expect(press.dashed > 0)
+        #expect(brightness(press.color) < 0.5 * brightness(begin.color), "an unverified control flow is fainter than a healthy one")
+        // Stale flows are amber and keep their kind's line: control dashed, data solid.
+        let event = try arrow("event"), reply = try arrow("reply")
+        #expect(event.color.x > event.color.z * 3 && event.dashed > 0)
+        #expect(reply.color.x > reply.color.z * 3 && reply.dashed == 0)
+    }
+
     @Test func healthViewStillDimsArrowsOffTheSelectedFeature() throws {
         // The feature chip dims the rest in either view; Health keeps its own colours on the route.
         var report = MindControl.HealthReport()

@@ -198,5 +198,24 @@ struct RendererTests {
         #expect(first > 10)
         #expect(Self.difference(drawn, background, width: 96, x: first, y: 32) <= 6)
     }
+
+    @Test func arrowGlowFadesIntoTheBackground() throws {
+        // The same for an arrow's glow and the edge of its strip. Rendered at 4× so the few points of glow span
+        // enough pixels to show their profile; kept under the bloom threshold, and with no pulses.
+        let scale = 4, width = 96 * 4, height = 64 * 4
+        var scene = FlowScene()
+        scene.arrows = [MCArrowInstance(p0: SIMD2(-40, 0), p1: SIMD2(-15, 0), p2: SIMD2(15, 0), p3: SIMD2(40, 0),
+                                        color: SIMD4(0.35, 0.35, 0.35, 1), width: 1.6, dashed: 0, pulses: 0, seed: 0,
+                                        level: Float(MC_LEVEL_ALWAYS), pad0: 0, pad1: 0, pad2: 0)]
+        let camera = PanZoomCamera(center: .zero, zoom: 1)
+        let drawn = try Self.renderPixels(using: try Self.renderer(showing: scene, camera: camera),
+                                          width: width, height: height, pixelScale: Float(scale))
+        let background = try Self.renderPixels(using: try Renderer(), width: width, height: height, pixelScale: Float(scale))
+        // Walk down the middle column towards the arrow, which runs along view y = 32 pt.
+        let column = width / 2, line = height / 2
+        let first = try #require((0..<line).first { Self.difference(drawn, background, width: width, x: column, y: $0) >= 2 })
+        #expect(first > line - 6 * scale, "the first lit pixel belongs to the arrow")
+        #expect(Self.difference(drawn, background, width: width, x: column, y: first) <= 8)
+    }
 }
 #endif

@@ -141,10 +141,10 @@ extension MindControl {
                     pulses = 0
                     let ids = Set(arrow.flowIDs)
                     if !ids.isDisjoint(with: report.staleFlows) {
-                        color = Palette.amber
-                        dashed = 0
+                        color = Palette.amber   // keeps its kind's line: control dashed, data solid
                     } else if !ids.isDisjoint(with: report.unverifiedFlows) {
-                        color = Palette.data * 0.35
+                        // Faint dashes of either kind: well under a healthy arrow, since control arrows are dashed anyway.
+                        color = Palette.grey * 0.35
                         dashed = 1
                     } else {
                         color = Palette.grey

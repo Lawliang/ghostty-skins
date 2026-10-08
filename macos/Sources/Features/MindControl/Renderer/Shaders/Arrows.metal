@@ -59,7 +59,10 @@ vertex ArrowOut mcArrowVertex(uint vid [[vertex_id]],
 fragment float4 mcArrowFragment(ArrowOut in [[stage_in]]) {
     float d = abs(in.across);
     float core = 1.0 - smoothstep(in.halfWidth - 0.75, in.halfWidth + 0.75, d);
-    float glow = exp(-d * d / (in.pixelScale * in.pixelScale * 6.0)) * 0.25;
+    // Fades to nothing before the strip's edge, so the glow never ends in a visible line.
+    float halfQuad = in.halfWidth + kFeatherPoints * in.pixelScale;
+    float reach = 1.0 - smoothstep(halfQuad * 0.5, halfQuad, d);
+    float glow = exp(-d * d / (in.pixelScale * in.pixelScale * 6.0)) * 0.25 * reach;
     float dash = in.dashed > 0.5 ? step(0.4, fract(in.along * in.lengthPx / (8.0 * in.pixelScale))) : 1.0;
     return float4(in.color * (core + glow) * dash * in.weight, 0.0);
 }
