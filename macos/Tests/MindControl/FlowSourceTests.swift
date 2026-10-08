@@ -46,6 +46,26 @@ struct FlowSourceTests {
         }
     }
 
+    @Test func subfolderUnderAnExcludedFolderNameIsFilteredRelativeToItself() throws {
+        let project = try TempProject()
+        try project.git("init", "-q")
+        try project.write([
+            "tools/cli/Sources/Main.swift": "struct Main {}\n",
+            "tools/cli/Sources/Parser.swift": "struct Parser {}\n",
+            "tools/cli/Tests/ParserTests.swift": "struct ParserTests {}\n",
+            "tools/cli/docs/Example.swift": "struct Example {}\n",
+            "other/X.swift": "struct X {}\n",
+        ])
+        try project.commitAll("first")
+        let cli = project.url.appendingPathComponent("tools/cli")
+
+        let disk = try FlowSource.workingTree.snapshot(root: cli)
+        let head = try FlowSource.revision("HEAD").snapshot(root: cli)
+        #expect(disk.sourceFiles == ["Sources/Main.swift", "Sources/Parser.swift"])
+        #expect(head.sourceFiles == disk.sourceFiles)
+        #expect(disk.read("Sources/Parser.swift") == "struct Parser {}\n")
+    }
+
     @Test func missingFlowFileIsNil() throws {
         let project = try TempProject()
         try project.write("main.swift", "let x = 1\n")

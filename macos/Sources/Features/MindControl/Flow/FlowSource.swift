@@ -24,12 +24,15 @@ extension MindControl {
         func snapshot(root: URL) throws -> FlowSnapshot {
             switch self {
             case .workingTree:
-                // The scanner lists files relative to the git root; make them relative to `root`
-                // when `root` is a subfolder of the repository.
-                var files = try ProjectScanner().scan(pwd: root, shouldStop: { false }).files
-                if let prefix = Self.repositoryPrefix(of: root), !prefix.isEmpty {
-                    files = files.filter { $0.hasPrefix(prefix) }.map { String($0.dropFirst(prefix.count)) }
+                // The scanner lists files relative to the git root. When `root` is a subfolder of the
+                // repository, keep only files inside it, filter them by their path relative to `root`
+                // (so a folder like `tools/cli` isn't excluded by its own location), then strip the prefix.
+                var scanner = ProjectScanner()
+                let prefix = Self.repositoryPrefix(of: root) ?? ""
+                if !prefix.isEmpty {
+                    scanner.includes = { $0.hasPrefix(prefix) && SourceFilter.isFeatureSource(String($0.dropFirst(prefix.count))) }
                 }
+                let files = try scanner.scan(pwd: root, shouldStop: { false }).files.map { String($0.dropFirst(prefix.count)) }
                 let read: @Sendable (String) -> String? = { path in
                     try? String(contentsOf: root.appendingPathComponent(path), encoding: .utf8)
                 }
