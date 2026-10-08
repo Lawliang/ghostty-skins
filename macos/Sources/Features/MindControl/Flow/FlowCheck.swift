@@ -112,7 +112,8 @@ extension MindControl {
                     guard let anchor = part.anchor else { continue }
                     let key = "\(system.id).\(part.id)"
                     if isFileAnchor(anchor) {
-                        guard let path = ProjectPath.normalized(anchor) else {
+                        // Outside by its text, or (on disk) through a symlink: stale, since it can't be opened either.
+                        guard let path = ProjectPath.normalized(anchor), ProjectPath.url(for: path, in: snapshot.root) != nil else {
                             report.staleParts.insert(key)
                             report.issues.append(.init(kind: .staleAnchor, subject: key, message: "\(part.name): file \(anchor) is outside the project."))
                             continue

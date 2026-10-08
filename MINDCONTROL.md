@@ -50,8 +50,8 @@ Rules:
 - When two systems' patterns match the same file, the one with the longer fixed text before its first
   wildcard wins. An equal tie is an error, and that file counts as unmapped.
 - A part has `id`, `name` and an optional `anchor`: a Swift type declared in the system's own files, or
-  a file path (anything with `/` or an extension). A path that leads outside the project (`../`, or
-  starting with `/`) is stale.
+  a file path (anything with `/` or an extension). A path that leads outside the project (`../`,
+  starting with `/`, or a symlink out) is stale.
 - A flow has `id`, `from`, `to`, `kind` (`data` when something is carried, `control` when one side
   triggers the other) and `carries`. `via` names the call where the hand-off happens; MindControl looks
   for it as a whole word in the `from` system's files (the `to` system's when `from` is external).

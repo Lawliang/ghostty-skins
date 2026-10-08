@@ -185,6 +185,26 @@ struct FlowCheckTests {
         #expect(report.issues.first { $0.subject == "core.up" }?.message == "Up: file ../../bin/x is outside the project.")
     }
 
+    /// A file anchor that's a symlink out of the project reads fine but can't be opened: it's stale too.
+    @Test func aSymlinkedAnchorOutOfTheProjectIsStale() throws {
+        let project = try TempProject()
+        try project.write("core/Main.swift", "let x = 1\n")
+        try FileManager.default.createSymbolicLink(atPath: project.url.appendingPathComponent("core/Link.swift").path,
+                                                   withDestinationPath: "/etc/hosts")
+        let map = FlowFixtures.map(#"""
+        { "version": 1,
+          "systems": [ { "id": "core", "name": "Core", "paths": ["core/**"],
+                         "parts": [ { "id": "link", "name": "Link", "anchor": "core/Link.swift" },
+                                    { "id": "main", "name": "Main", "anchor": "core/Main.swift" } ] } ] }
+        """#)
+        let snapshot = MindControl.FlowSnapshot(root: project.url, flowData: nil, layoutData: nil,
+                                                sourceFiles: ["core/Link.swift", "core/Main.swift"], read: { _ in "text" })
+        let report = FlowCheck.run(map: map, snapshot: snapshot)
+        #expect(report.staleParts == ["core.link"])
+        #expect(report.anchorFiles["core.main"] == "core/Main.swift")
+        #expect(report.issues.first { $0.subject == "core.link" }?.message == "Link: file core/Link.swift is outside the project.")
+    }
+
     @Test(arguments: [
         ("a/b.swift", "a/b.swift"), ("a/./b/../c.swift", "a/c.swift"), ("a//b", "a/b"),
         ("../x", nil), ("a/../../x", nil), ("/etc/hosts", nil), ("..", nil), ("a/..", nil), ("", nil),
