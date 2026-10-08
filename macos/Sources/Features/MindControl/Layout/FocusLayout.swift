@@ -6,6 +6,8 @@ extension MindControl {
         private typealias M = LayoutMetrics
         static let sideGap: CGFloat = 180
         static let laneGap: CGFloat = 70
+        /// From one lane's top to the next.
+        static let laneStep = M.systemMinSize.height + laneGap
 
         /// The system large in the middle with all its parts; senders on the left, receivers on the right.
         static func system(_ id: String, map: FlowMap, broken: Set<String>) -> MapLayout? {
@@ -55,10 +57,14 @@ extension MindControl {
             return MapLayout(boxes: boxes, arrows: arrows, fixedLevel: true)
         }
 
-        /// Only the route's systems, one column each in step order; conditional steps get their own lanes.
+        /// Only the route's systems, one column each in step order; conditional steps get their own lanes and
+        /// their arrows bend toward them. Nil when nothing on the route can be drawn.
         static func feature(_ id: String, map: FlowMap, broken: Set<String>) -> MapLayout? {
             guard let feature = map.feature(id) else { return nil }
-            let steps = feature.route.compactMap { map.flow($0) }.filter { drawn($0, map: map, broken: broken) }
+            // A step the route repeats is drawn once: arrow ids must be unique.
+            var seen = Set<String>()
+            let steps = feature.route.compactMap { map.flow($0) }
+                .filter { drawn($0, map: map, broken: broken) && seen.insert($0.id).inserted }
             var conditions: [String] = []
             var placed: [String: CGPoint] = [:]
             var orderPlaced: [String] = []
@@ -71,7 +77,7 @@ extension MindControl {
                 for (end, system) in [flow.from.system, flow.to.system].enumerated() where placed[system] == nil {
                     let lane = lane(for: end == 1 ? flow.when : nil, conditions: conditions)
                     placed[system] = CGPoint(x: CGFloat(column) * (M.systemMinSize.width + M.columnGap),
-                                             y: CGFloat(lane) * (M.systemMinSize.height + laneGap))
+                                             y: CGFloat(lane) * laneStep)
                     if end == 1 { reachedFrom[system] = flow.from.system }
                     orderPlaced.append(system)
                     column += 1
@@ -101,10 +107,13 @@ extension MindControl {
                 return MapLayout.Box(id: system.id, kind: .system, rect: CGRect(origin: CGPoint(x: x, y: point.y), size: M.systemMinSize),
                                      title: system.name, subtitle: nil, external: system.external, tint: tint(system, map), partCount: 0)
             }
+            guard !boxes.isEmpty else { return nil }
+            // A conditional arrow bends into its condition's lane, even between systems already on the main line.
             let arrows = steps.compactMap { flow -> MapLayout.ArrowSpec? in
                 guard flow.from.system != flow.to.system else { return nil }
                 return MapLayout.ArrowSpec(id: "flow:\(flow.id)", level: .system, from: flow.from.system, to: flow.to.system,
-                                           kind: flow.kind, flowIDs: [flow.id], label: flow.carries, conditional: flow.when != nil, weight: 1)
+                                           kind: flow.kind, flowIDs: [flow.id], label: flow.carries, conditional: flow.when != nil, weight: 1,
+                                           bend: CGFloat(lane(for: flow.when, conditions: conditions)) * laneStep)
             }
             return MapLayout(boxes: boxes, arrows: arrows, fixedLevel: true)
         }

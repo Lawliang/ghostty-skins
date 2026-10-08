@@ -61,6 +61,9 @@ extension MindControl {
             let conditional: Bool
             /// How many flows were merged into this arrow.
             let weight: Int
+            /// Perpendicular push on the curve's middle, in world points. Negative bends up (y down);
+            /// see `ArrowRouter.route`.
+            var bend: CGFloat = 0
         }
 
         var boxes: [Box]

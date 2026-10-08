@@ -167,6 +167,64 @@ struct FocusLayoutTests {
         #expect(no.minY > a.midY)
     }
 
+    @Test func conditionalStepsToAPlacedSystemBendIntoTheirLanes() throws {
+        // In `speech`, `commit` and `discard` both run audio → agent, which `pcm` already placed.
+        let layout = try #require(FocusLayout.feature("speech", map: FlowFixtures.arca, broken: []))
+        let curves = MindControl.ArrowRouter.curves(for: layout)
+        let pcm = try #require(curves["flow:pcm"]), commit = try #require(curves["flow:commit"])
+        let discard = try #require(curves["flow:discard"])
+        #expect(commit.mid.y < pcm.mid.y)
+        #expect(discard.mid.y > pcm.mid.y)
+        let lane = MindControl.LayoutMetrics.systemMinSize.height + FocusLayout.laneGap
+        let bends = Dictionary(uniqueKeysWithValues: layout.arrows.map { ($0.id, $0.bend) })
+        #expect(bends["flow:commit"] == -lane)
+        #expect(bends["flow:discard"] == lane)
+        #expect(bends["flow:pcm"] == 0)
+    }
+
+    @Test func conditionalArrowsBendEvenWhenTheirTargetIsInTheLane() throws {
+        let map = FlowFixtures.map(#"""
+        { "version": 1,
+          "systems": [ { "id": "a", "name": "A" }, { "id": "yes", "name": "Yes" }, { "id": "no", "name": "No" },
+                       { "id": "c", "name": "C" } ],
+          "flows": [ { "id": "y", "from": "a", "to": "yes", "kind": "control", "carries": "x", "when": "words heard" },
+                     { "id": "n", "from": "a", "to": "no", "kind": "control", "carries": "x", "when": "nothing heard" },
+                     { "id": "ac", "from": "a", "to": "c", "kind": "data", "carries": "x" } ],
+          "features": [ { "id": "f", "name": "F", "route": ["y", "n", "ac"] } ] }
+        """#)
+        let layout = try #require(FocusLayout.feature("f", map: map, broken: []))
+        let lane = MindControl.LayoutMetrics.systemMinSize.height + FocusLayout.laneGap
+        #expect(layout.arrows.map(\.bend) == [-lane, lane, 0])
+    }
+
+    @Test func aRepeatedStepDrawsOneArrow() throws {
+        let map = FlowFixtures.map(#"""
+        { "version": 1,
+          "systems": [ { "id": "a", "name": "A" }, { "id": "b", "name": "B" }, { "id": "c", "name": "C" } ],
+          "flows": [ { "id": "ab", "from": "a", "to": "b", "kind": "data", "carries": "x" },
+                     { "id": "bc", "from": "b", "to": "c", "kind": "data", "carries": "x" } ],
+          "features": [ { "id": "f", "name": "F", "route": ["ab", "bc", "ab"] } ] }
+        """#)
+        let layout = try #require(FocusLayout.feature("f", map: map, broken: []))
+        #expect(layout.arrows.map(\.id) == ["flow:ab", "flow:bc"])
+        #expect(Set(layout.boxes.map(\.id)) == ["a", "b", "c"])
+    }
+
+    @Test func aFeatureWithNothingToDrawHasNoFocus() {
+        let map = FlowFixtures.map(#"""
+        { "version": 1,
+          "systems": [ { "id": "a", "name": "A" }, { "id": "b", "name": "B" } ],
+          "flows": [ { "id": "ab", "from": "a", "to": "b", "kind": "data", "carries": "x" },
+                     { "id": "g", "from": "a", "to": "ghost", "kind": "data", "carries": "x" } ],
+          "features": [ { "id": "broken", "name": "Broken", "route": ["nope", "ab"] },
+                        { "id": "ghostly", "name": "Ghostly", "route": ["g"] },
+                        { "id": "empty", "name": "Empty", "route": [] } ] }
+        """#)
+        #expect(FocusLayout.feature("broken", map: map, broken: ["ab"]) == nil)
+        #expect(FocusLayout.feature("ghostly", map: map, broken: []) == nil)
+        #expect(FocusLayout.feature("empty", map: map, broken: []) == nil)
+    }
+
     private func overlaps(_ layout: MindControl.MapLayout) -> Bool {
         let rects = layout.boxes.map(\.rect)
         for i in rects.indices {

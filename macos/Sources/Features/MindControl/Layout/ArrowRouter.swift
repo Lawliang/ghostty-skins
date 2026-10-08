@@ -63,13 +63,31 @@ extension MindControl {
                 for (index, arrow) in group.enumerated() {
                     guard let a = rects[arrow.from], let b = rects[arrow.to] else { continue }
                     let offset = (CGFloat(index) - CGFloat(group.count - 1) / 2) * LayoutMetrics.parallelSpacing
-                    curves[arrow.id] = route(from: a, to: b, offset: offset)
+                    curves[arrow.id] = route(from: a, to: b, offset: offset, bend: arrow.bend)
                 }
             }
             return curves
         }
 
-        static func route(from a: CGRect, to b: CGRect, offset: CGFloat) -> Curve {
+        static func route(from a: CGRect, to b: CGRect, offset: CGFloat, bend: CGFloat = 0) -> Curve {
+            bent(straight(from: a, to: b, offset: offset), by: bend)
+        }
+
+        /// Moves both control points `bend` across the chord; the ends stay put. Negative is up whichever
+        /// way the arrow runs (y down), or left when the chord is closer to vertical.
+        private static func bent(_ curve: Curve, by bend: CGFloat) -> Curve {
+            let dx = curve.p3.x - curve.p0.x, dy = curve.p3.y - curve.p0.y
+            let length = hypot(dx, dy)
+            guard bend != 0, length > 0 else { return curve }
+            var nx = -dy / length, ny = dx / length
+            if abs(dx) >= abs(dy) ? ny < 0 : nx < 0 { nx = -nx; ny = -ny }
+            var out = curve
+            out.p1 = CGPoint(x: curve.p1.x + nx * bend, y: curve.p1.y + ny * bend)
+            out.p2 = CGPoint(x: curve.p2.x + nx * bend, y: curve.p2.y + ny * bend)
+            return out
+        }
+
+        private static func straight(from a: CGRect, to b: CGRect, offset: CGFloat) -> Curve {
             let separatedHorizontally = b.minX > a.maxX || b.maxX < a.minX
             if separatedHorizontally {
                 let sign: CGFloat = b.midX >= a.midX ? 1 : -1
