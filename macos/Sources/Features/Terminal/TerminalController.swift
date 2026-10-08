@@ -1025,6 +1025,13 @@ class TerminalController: BaseTerminalController, TabGroupCloseCoordinator.Contr
             sidebar.focusTerminal = { [weak self] in
                 if let surface = self?.focusedSurface { Ghostty.moveFocus(to: surface) }
             }
+            sidebar.openTab = { [weak self] directory, input in
+                guard let self, let window = self.window else { return }
+                var config = Ghostty.SurfaceConfiguration()
+                config.workingDirectory = directory.path
+                config.initialInput = input
+                _ = TerminalController.newTab(self.ghostty, from: window, withBaseConfig: config)
+            }
         }
 
         // I copy this because we may change the source in the future but also because

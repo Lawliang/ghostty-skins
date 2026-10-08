@@ -65,6 +65,17 @@ struct ExtensionSidebarModelTests {
         model.mindControl.close()
     }
 
+    @Test func openTabIsHandedToTheController() {
+        let model = ExtensionSidebarModel()
+        model.openTab(URL(fileURLWithPath: "/tmp"), "ignored\n")   // the default does nothing
+        var opened: [(URL, String)] = []
+        model.openTab = { opened.append(($0, $1)) }
+        model.openTab(URL(fileURLWithPath: "/tmp/project"), "claude\n")
+        #expect(opened.count == 1)
+        #expect(opened.first?.0.path == "/tmp/project")
+        #expect(opened.first?.1 == "claude\n")
+    }
+
     @Test func closingTheVisualizerReturnsFocusToTheTerminal() {
         let model = ExtensionSidebarModel()
         model.workingDirectory = { nil }
