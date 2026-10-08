@@ -8,8 +8,9 @@ extension MindControl {
     /// (Draft's Return) still work: Return is passed on.
     final class PanelKeyView: NSView {
         var onEscape: () -> Void = {}
-        /// Tab, Return, keypad Enter.
-        static let passedOn: Set<UInt16> = [48, 36, 76]
+        /// Return and keypad Enter. Tab stays here: the window's key-view loop would hand focus to the terminal,
+        /// and the panel's controls are used with the mouse.
+        static let passedOn: Set<UInt16> = [36, 76]
 
         override var acceptsFirstResponder: Bool { true }
 
@@ -36,8 +37,8 @@ extension MindControl {
                 return
             }
             let modifiers = event.modifierFlags.intersection([.command, .control, .option])
-            // Up the responder chain (which never reaches the terminal): Tab, to move between the panel's buttons,
-            // and Return / Enter, so the window can still give them to a default button.
+            // Return / Enter go up the responder chain (which never reaches the terminal), so the window can still
+            // give them to a default button. Tab and Shift-Tab stop here with the typing; ⌃Tab and the like go on.
             if modifiers.isEmpty, !Self.passedOn.contains(event.keyCode) { return }
             super.keyDown(with: event)
         }

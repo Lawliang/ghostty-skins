@@ -30,12 +30,15 @@ struct PanelFocusTests {
         view.keyDown(with: try key(" ", code: 49))
         view.keyDown(with: try key("1", code: 18))
         #expect(recorder.keys.isEmpty)
-        // Tab moves between buttons, Return can reach a default button, and keys with ⌘ or ⌃ go on up.
+        // Tab stops here too: the window's key-view loop would hand focus to the terminal.
         view.keyDown(with: try key("\t", code: 48))
+        view.keyDown(with: try key("\t", code: 48, modifiers: .shift))
+        #expect(recorder.keys.isEmpty)
+        // Return can reach a default button, and keys with ⌘ or ⌃ go on up.
         view.keyDown(with: try key("\r", code: 36))
         view.keyDown(with: try key("k", code: 40, modifiers: .command))
         view.keyDown(with: try key("c", code: 8, modifiers: .control))
-        #expect(recorder.keys == [48, 36, 40, 8])
+        #expect(recorder.keys == [36, 40, 8])
         #expect(closes == 1)
     }
 
