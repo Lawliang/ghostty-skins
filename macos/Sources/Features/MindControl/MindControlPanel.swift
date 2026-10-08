@@ -28,6 +28,10 @@ extension MindControl {
         var body: some View {
             ZStack {
                 Self.background
+                if !hasMapView {
+                    // Without the map view nothing else takes keyboard focus, and keys would reach the terminal.
+                    PanelFocusHolder(onEscape: onClose)
+                }
                 VStack(spacing: 0) {
                     MapHeader(model: model, controller: controller, canRunClaude: canRunClaude,
                               onChange: chooseFolder, onRefresh: { launch(.refresh) })
@@ -46,11 +50,9 @@ extension MindControl {
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
-                if isReady {
+                if hasMapView {
+                    // ⌘F while the search field or a button has focus; the map view handles it itself.
                     Button("") { controller.beginSearch(with: "") }.keyboardShortcut("f", modifiers: .command).opacity(0)
-                } else {
-                    // Esc closes MindControl when there's no map view to catch it.
-                    Button("") { onClose() }.keyboardShortcut(.cancelAction).opacity(0)
                 }
             }
             .onAppear {
@@ -84,6 +86,9 @@ extension MindControl {
             if case .ready = model.state { return true }
             return false
         }
+
+        /// The map view takes keyboard focus (Esc, F, typing); without it, the focus holder does.
+        private var hasMapView: Bool { isReady && renderer != nil }
 
         private var canRunClaude: Bool { Self.canRunClaude(in: model.state) && !startingClaude }
 
