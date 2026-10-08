@@ -41,9 +41,10 @@ struct ExtensionSidebarModelTests {
 
     @Test func openingTheVisualizerLoadsTheTerminalsProject() {
         let model = ExtensionSidebarModel()
-        model.workingDirectory = { nil }           // e.g. shell integration hasn't reported a pwd
+        let dir = URL(fileURLWithPath: "/tmp/mc-project")
+        model.workingDirectory = { dir }
         model.select(.codebaseVisualizer)
-        #expect(model.mindControl.state == .noProject)
+        #expect(model.mindControl.pwd == dir)
     }
 
     @Test func closingTheVisualizerReturnsFocusToTheTerminal() {

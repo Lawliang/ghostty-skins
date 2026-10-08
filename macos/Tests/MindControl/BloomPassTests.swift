@@ -2,14 +2,6 @@
 import Testing
 @testable import Ghostty
 
-private typealias Graph = MindControl.Graph
-private typealias GraphNode = MindControl.GraphNode
-private typealias GraphEdge = MindControl.GraphEdge
-private typealias NodeKind = MindControl.NodeKind
-private typealias GraphBuffers = MindControl.GraphBuffers
-private typealias NodeStyle = MindControl.NodeStyle
-private typealias OrbitCamera = MindControl.OrbitCamera
-private typealias Renderer = MindControl.Renderer
 private typealias BloomPass = MindControl.BloomPass
 
 struct BloomPassTests {

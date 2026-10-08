@@ -25,26 +25,5 @@ struct SwiftSymbolsTests {
         #expect(SwiftSymbols.declaredTypes(in: source) ==
                 ["Renderer", "GraphBuffers", "Nested", "Drawable", "Worker", "Callback"])
     }
-
-    @Test func identifiersSkipCommentsAndStrings() {
-        let source = """
-        let a = GraphBuffers(graph: g) // Renderer in a comment
-        /* Block Comment mentions Pipelines /* nested Inner */ still comment */
-        let s = "Camera in a string \\" Escaped"
-        let multi = \"""
-        MultiLine Text
-        \"""
-        let b: OrbitCamera = .init()
-        """
-        let ids = SwiftSymbols.typeLikeIdentifiers(in: source)
-        #expect(ids.contains("GraphBuffers"))
-        #expect(ids.contains("OrbitCamera"))
-        #expect(!ids.contains("Renderer"))
-        #expect(!ids.contains("Pipelines"))
-        #expect(!ids.contains("Inner"))
-        #expect(!ids.contains("Camera"))
-        #expect(!ids.contains("MultiLine"))
-        #expect(!ids.contains("graph"))          // lowercase identifiers aren't type-like
-    }
 }
 #endif

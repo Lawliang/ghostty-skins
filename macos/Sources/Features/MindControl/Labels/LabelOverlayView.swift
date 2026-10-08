@@ -2,6 +2,18 @@ import AppKit
 import QuartzCore
 
 extension MindControl {
+    struct PlacedLabel: Equatable {
+        let id: String
+        let text: String
+        /// View points, top-left origin.
+        let frame: CGRect
+        let fontSize: CGFloat
+        let isBold: Bool
+        let opacity: CGFloat
+        /// Arrow labels sit on a dark pill so they stay readable over lines.
+        let hasBackground: Bool
+    }
+
     /// Text labels over the Metal view, drawn with a reusable pool of CATextLayers. Never takes the mouse.
     final class LabelOverlayView: NSView {
         private var pool: [CATextLayer] = []
@@ -12,6 +24,7 @@ extension MindControl {
         }
 
         private static var sizeCache: [SizeKey: CGSize] = [:]
+        static let pillPadding = CGSize(width: 6, height: 2)
 
         override init(frame: NSRect) {
             super.init(frame: frame)
@@ -21,6 +34,7 @@ extension MindControl {
 
         required init?(coder: NSCoder) { nil }
 
+        override var isFlipped: Bool { true }
         override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
         static func font(size: CGFloat, bold: Bool) -> NSFont {
@@ -46,11 +60,8 @@ extension MindControl {
                 let text = CATextLayer()
                 text.contentsScale = window?.backingScaleFactor ?? 2
                 text.foregroundColor = NSColor.white.cgColor
-                text.shadowColor = NSColor.black.cgColor
-                text.shadowOpacity = 0.8
-                text.shadowRadius = 2
-                text.shadowOffset = .zero
-                text.alignmentMode = .left
+                text.alignmentMode = .center
+                text.cornerRadius = 4
                 root.addSublayer(text)
                 pool.append(text)
             }
@@ -67,7 +78,18 @@ extension MindControl {
                     text.font = Self.font(size: label.fontSize, bold: label.isBold)
                     text.fontSize = label.fontSize
                 }
-                text.frame = label.frame
+                if label.hasBackground {
+                    text.backgroundColor = NSColor(calibratedRed: 0.03, green: 0.04, blue: 0.09, alpha: 0.85).cgColor
+                    text.shadowOpacity = 0
+                    text.frame = label.frame.insetBy(dx: -Self.pillPadding.width, dy: -Self.pillPadding.height)
+                } else {
+                    text.backgroundColor = nil
+                    text.shadowColor = NSColor.black.cgColor
+                    text.shadowOpacity = 0.8
+                    text.shadowRadius = 2
+                    text.shadowOffset = .zero
+                    text.frame = label.frame
+                }
                 text.opacity = Float(label.opacity)
             }
             CATransaction.commit()
