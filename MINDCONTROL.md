@@ -46,7 +46,7 @@ Rules:
 - A system has a `name`, and optionally `summary` (one sentence), `zone`, `paths`, `parts` and
   `external`. An external system (a service, hardware, the OS) has no `paths` and no `parts`.
 - `paths` are globs relative to the root: `*` within a name, `**` across folders, `?` one character. A
-  pattern with no wildcard names a file or a whole folder. Don't end one with `/`.
+  pattern with no wildcard names a file or a whole folder (a trailing `/` is fine).
 - When two systems' patterns match the same file, the one with the longer fixed text before its first
   wildcard wins. An equal tie is an error, and that file counts as unmapped.
 - A part has `id`, `name` and an optional `anchor`: a Swift type declared in the system's own files, or

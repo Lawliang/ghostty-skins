@@ -3,9 +3,23 @@ import Foundation
 extension MindControl {
     /// Path patterns relative to the project root: `*` matches within one folder name, `**` across
     /// folders (including none), `?` one character. A pattern with no wildcard also matches everything
-    /// inside it when it names a folder.
+    /// inside it when it names a folder, with or without a trailing `/`. As with git's `:(glob)`, a pattern
+    /// with a wildcard and a trailing `/` matches no files.
     enum Glob {
+        /// A plain folder pattern without its trailing `/`s ("relay/src/" → "relay/src").
+        static func normalized(_ pattern: String) -> String {
+            guard !hasWildcard(pattern) else { return pattern }
+            var pattern = pattern
+            while pattern.count > 1, pattern.hasSuffix("/") { pattern.removeLast() }
+            return pattern
+        }
+
+        static func hasWildcard(_ pattern: String) -> Bool {
+            pattern.contains("*") || pattern.contains("?")
+        }
+
         static func regex(for pattern: String) -> NSRegularExpression {
+            let pattern = normalized(pattern)
             var out = "^"
             let chars = Array(pattern)
             var i = 0
@@ -30,7 +44,7 @@ extension MindControl {
                     i += 1
                 }
             }
-            if !pattern.contains("*"), !pattern.contains("?") {
+            if !hasWildcard(pattern) {
                 out += "(?:/.*)?"
             }
             out += "$"
@@ -48,6 +62,7 @@ extension MindControl {
 
         /// How much of the pattern is fixed text before its first wildcard; longer is more specific.
         static func literalPrefixLength(_ pattern: String) -> Int {
+            let pattern = normalized(pattern)
             guard let index = pattern.firstIndex(where: { $0 == "*" || $0 == "?" }) else { return pattern.count }
             return pattern.distance(from: pattern.startIndex, to: index)
         }
