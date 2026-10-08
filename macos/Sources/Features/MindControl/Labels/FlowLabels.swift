@@ -25,9 +25,13 @@ extension MindControl {
                 let r = box.rect
                 switch box.kind {
                 case .zone:
-                    out.append(LabelCandidate(id: box.id, text: box.title, anchor: screen(r.minX + M.zonePad * 0.6, r.minY + M.zoneLabel / 2),
-                                              leading: true, fontSize: far ? 22 : 14, bold: true, opacity: far ? 0.95 : 0.55,
-                                              priority: 0, background: false, maxWidth: nil))
+                    // Far out the name strip is a few points tall, so the large name sits just above the zone's
+                    // top-left corner instead of spilling over the zone and its neighbours.
+                    let fontSize: CGFloat = far ? 22 : 14
+                    let anchor = far ? screen(r.minX, r.minY).offset(0, -(4 + fontSize * 0.6))
+                        : screen(r.minX + M.zonePad * 0.6, r.minY + M.zoneLabel / 2)
+                    out.append(LabelCandidate(id: box.id, text: box.title, anchor: anchor, leading: true, fontSize: fontSize, bold: true,
+                                              opacity: far ? 0.95 : 0.55, priority: 0, background: false, maxWidth: nil))
                 case .system:
                     guard systemsShown else { continue }
                     let width = r.width * zoom - 28

@@ -27,6 +27,46 @@ struct FlowLabelsTests {
         #expect(!shown.contains("PCM16 24 kHz"))
     }
 
+    @MainActor
+    @Test func farZoneNamesSitJustAboveTheirZones() throws {
+        // At 0.15 a zone's name strip is 8 pt tall, so the 22 pt name goes above the zone, not over it or its neighbours.
+        let curves = MindControl.ArrowRouter.curves(for: layout)
+        let camera = MindControl.PanZoomCamera(center: CGPoint(x: layout.bounds.midX, y: layout.bounds.midY), zoom: 0.15)
+        let candidates = FlowLabels.candidates(layout: layout, curves: curves, camera: camera, viewSize: view, litFlows: [], showControl: true)
+        let placed = LabelPlanner.plan(candidates, viewport: view, measure: MindControl.LabelOverlayView.measure)
+        let zones = layout.boxes.filter { $0.kind == .zone }
+        #expect(zones.count == 3)
+        let screenRects = zones.map { zone -> CGRect in
+            let a = camera.toScreen(CGPoint(x: zone.rect.minX, y: zone.rect.minY), viewSize: view)
+            let b = camera.toScreen(CGPoint(x: zone.rect.maxX, y: zone.rect.maxY), viewSize: view)
+            return CGRect(x: a.x, y: a.y, width: b.x - a.x, height: b.y - a.y)
+        }
+        var frames: [CGRect] = []
+        for (zone, rect) in zip(zones, screenRects) {
+            let label = try #require(placed.first { $0.id == zone.id }, "\(zone.title) is not shown")
+            #expect(label.fontSize == 22)
+            #expect(label.frame.maxY <= rect.minY, "\(zone.title) covers its zone")
+            #expect(rect.minY - label.frame.maxY <= 8, "\(zone.title) floats away from its zone")
+            #expect(abs(label.frame.minX - rect.minX) <= 1, "\(zone.title) is not over its zone's left edge")
+            for other in screenRects { #expect(!label.frame.intersects(other), "\(zone.title) covers a zone") }
+            frames.append(label.frame)
+        }
+        for i in frames.indices { for j in frames.indices where j > i { #expect(!frames[i].intersects(frames[j])) } }
+    }
+
+    @Test func nearZoneNamesStayInTheirNameStrip() throws {
+        let curves = MindControl.ArrowRouter.curves(for: layout)
+        let camera = MindControl.PanZoomCamera(center: CGPoint(x: layout.bounds.midX, y: layout.bounds.midY), zoom: 0.6)
+        let candidates = FlowLabels.candidates(layout: layout, curves: curves, camera: camera, viewSize: view, litFlows: [], showControl: true)
+        for zone in layout.boxes where zone.kind == .zone {
+            let label = try #require(candidates.first { $0.id == zone.id })
+            let expected = camera.toScreen(CGPoint(x: zone.rect.minX + MindControl.LayoutMetrics.zonePad * 0.6,
+                                                   y: zone.rect.minY + MindControl.LayoutMetrics.zoneLabel / 2), viewSize: view)
+            #expect(label.anchor == expected)
+            #expect(label.leading && label.fontSize == 14)
+        }
+    }
+
     @Test func middleZoomShowsSystemsAndPartHints() {
         let shown = texts(zoom: 0.6)
         #expect(shown.contains("Audio"))
