@@ -116,7 +116,7 @@ struct FocusLayoutTests {
         #expect(Set(layout.boxes.map(\.id)) == ["a", "b"])
         #expect(layout.arrows.map(\.id) == ["flow:ab"])
         let a = try #require(layout.box("a")).rect, b = try #require(layout.box("b")).rect
-        #expect(b.minX - a.maxX == MindControl.LayoutMetrics.columnGap)
+        #expect(b.minX - a.maxX == FocusLayout.featureGap)
     }
 
     @Test func conditionalSelfFlowKeepsItsSystemOnTheMainLine() throws {
@@ -208,7 +208,7 @@ struct FocusLayoutTests {
         let discard = try #require(curves["flow:discard"])
         #expect(commit.mid.y < pcm.mid.y)
         #expect(discard.mid.y > pcm.mid.y)
-        let lane = MindControl.LayoutMetrics.systemMinSize.height + FocusLayout.laneGap
+        let lane = FocusLayout.featureBoxSize.height + FocusLayout.laneGap
         let bends = Dictionary(uniqueKeysWithValues: layout.arrows.map { ($0.id, $0.bend) })
         #expect(bends["flow:commit"] == -lane)
         #expect(bends["flow:discard"] == lane)
@@ -261,6 +261,25 @@ struct FocusLayoutTests {
         #expect(FocusLayout.feature("broken", map: map, broken: ["ab"]) == nil)
         #expect(FocusLayout.feature("ghostly", map: map, broken: []) == nil)
         #expect(FocusLayout.feature("empty", map: map, broken: []) == nil)
+    }
+
+    @MainActor
+    @Test func featureFocusNamesFitAtTheFittedZoom() throws {
+        // Six systems in a row, fitted to a 1200 pt view: each name (13 pt semibold, 14 pt in from the left with the
+        // same room kept on the right, as FlowLabels places it) fits without "…", as does a typical 16-character one.
+        let layout = try #require(FocusLayout.feature("speech", map: FlowFixtures.arca, broken: []))
+        #expect(layout.boxes.count == 6)
+        let zoom = MindControl.PanZoomCamera.fitting(layout.bounds, in: CGSize(width: 1200, height: 800)).zoom
+        let measure = { (text: String) in MindControl.LabelOverlayView.measure(text, 13, true).width }
+        for box in layout.boxes {
+            let room = box.rect.width * zoom - 28
+            #expect(room >= measure(box.title), "\(box.title) needs \(measure(box.title)) pt, has \(room)")
+            #expect(room >= measure("Upload scheduler"))
+        }
+        // The gaps still show the arrows between the boxes.
+        let row = layout.boxes.filter { $0.rect.minY == 0 }.map(\.rect).sorted { $0.minX < $1.minX }
+        for (a, b) in zip(row, row.dropFirst()) { #expect((b.minX - a.maxX) * zoom >= 35) }
+        #expect(!overlaps(layout))
     }
 
     private func overlaps(_ layout: MindControl.MapLayout) -> Bool {

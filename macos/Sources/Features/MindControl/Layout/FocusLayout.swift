@@ -6,8 +6,13 @@ extension MindControl {
         private typealias M = LayoutMetrics
         static let sideGap: CGFloat = 180
         static let laneGap: CGFloat = 70
+        /// Feature focus boxes hold only a name, so they are wide and close together: fitted to a 1200 pt view,
+        /// six in a row still show a 16-character name in full. They are tall enough that the arrows between
+        /// them (and their labels, which overhang the narrow gaps) run below the names.
+        static let featureBoxSize = CGSize(width: 280, height: 140)
+        static let featureGap: CGFloat = 70
         /// From one lane's top to the next.
-        static let laneStep = M.systemMinSize.height + laneGap
+        static let laneStep = featureBoxSize.height + laneGap
 
         /// The system large in the middle with all its parts; senders on the left, receivers on the right.
         static func system(_ id: String, map: FlowMap, broken: Set<String>) -> MapLayout? {
@@ -76,7 +81,7 @@ extension MindControl {
                 // A step's source stays on the main line; only its target moves into the condition's lane.
                 for (end, system) in [flow.from.system, flow.to.system].enumerated() where placed[system] == nil {
                     let lane = lane(for: end == 1 ? flow.when : nil, conditions: conditions)
-                    placed[system] = CGPoint(x: CGFloat(column) * (M.systemMinSize.width + M.columnGap),
+                    placed[system] = CGPoint(x: CGFloat(column) * (featureBoxSize.width + featureGap),
                                              y: CGFloat(lane) * laneStep)
                     if end == 1 { reachedFrom[system] = flow.from.system }
                     orderPlaced.append(system)
@@ -96,7 +101,7 @@ extension MindControl {
                     columnOf[system] = lastX
                     shared.append(system)
                 } else {
-                    lastX = lastX < 0 ? 0 : lastX + M.systemMinSize.width + M.columnGap
+                    lastX = lastX < 0 ? 0 : lastX + featureBoxSize.width + featureGap
                     columnOf[system] = lastX
                     shared = inLane ? [system] : []
                 }
@@ -104,7 +109,7 @@ extension MindControl {
 
             let boxes: [MapLayout.Box] = orderPlaced.compactMap { systemID in
                 guard let system = map.system(systemID), let point = placed[systemID], let x = columnOf[systemID] else { return nil }
-                return MapLayout.Box(id: system.id, kind: .system, rect: CGRect(origin: CGPoint(x: x, y: point.y), size: M.systemMinSize),
+                return MapLayout.Box(id: system.id, kind: .system, rect: CGRect(origin: CGPoint(x: x, y: point.y), size: featureBoxSize),
                                      title: system.name, subtitle: nil, external: system.external, tint: tint(system, map), partCount: 0)
             }
             guard !boxes.isEmpty else { return nil }
