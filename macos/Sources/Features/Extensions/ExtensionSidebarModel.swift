@@ -28,7 +28,7 @@ final class ExtensionSidebarModel: ObservableObject {
     /// The title bar's color (the top pane's background), set by the window.
     @Published var chromeColor: NSColor?
 
-    /// MindControl's project map for this window; its scan cache outlives the open visualizer.
+    /// MindControl's flow map for this window. It reloads every time the visualizer opens.
     let mindControl = MindControl.Model()
     /// The focused terminal's working directory. Set by the window's controller.
     var workingDirectory: () -> URL? = { nil }
@@ -45,6 +45,9 @@ final class ExtensionSidebarModel: ObservableObject {
         active = ext
         if ext == .codebaseVisualizer, previous != .codebaseVisualizer {
             mindControl.load(pwd: workingDirectory())
+        }
+        if previous == .codebaseVisualizer, ext != .codebaseVisualizer {
+            mindControl.close()
         }
         // An open extension may hold keyboard focus (the visualizer does, for Esc); hand it back.
         if previous != nil, ext == nil {
