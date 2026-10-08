@@ -35,6 +35,12 @@ part or file. Nothing is drawn that does not describe a real flow.
 | Layout | Automatic left-to-right layered layout. Dragged boxes are saved in a separate layout file. |
 | Arrows | Data and control, drawn differently. Control arrows can be hidden with one toggle. |
 | Search | Features, systems, parts, and any source file or Swift type, which resolves to its system. |
+| Keeping it current | Drafting adds an upkeep rule to the project's `CLAUDE.md`; a "Refresh with Claude" button with an "updated N commits ago" counter. |
+| A file matched by two systems | The more specific pattern wins; a true tie is an error. |
+| Branches in a feature | Optional `when` on a flow; conditional steps grouped in the side panel. |
+| Trusting arrows | Each flow names its hand-off in `via`, checked against the code. |
+| Box size | Boxes are sized for their parts; zooming never moves anything. |
+| Map growing too big | Soft density warnings; nothing blocked. |
 
 ## The flow file
 
@@ -56,11 +62,17 @@ folder outside git). Committed with the code. Dragged positions go in
     { "id": "openai", "name": "OpenAI Realtime", "external": true }
   ],
   "flows": [
-    { "id": "pcm", "from": "audio.capture", "to": "agent", "kind": "data", "carries": "PCM16 24 kHz" },
-    { "id": "begin", "from": "tap", "to": "audio.capture", "kind": "control", "carries": "begin / end" }
+    { "id": "pcm", "from": "audio.capture", "to": "agent", "kind": "data",
+      "carries": "PCM16 24 kHz", "via": "sendAudio" },
+    { "id": "begin", "from": "tap", "to": "audio.capture", "kind": "control",
+      "carries": "begin / end", "via": "beginTransmission" },
+    { "id": "commit", "from": "audio.capture", "to": "agent", "kind": "control",
+      "carries": "commit turn", "via": "commitTurn", "when": "words heard" },
+    { "id": "discard", "from": "audio.capture", "to": "agent", "kind": "control",
+      "carries": "discard turn", "via": "discardTurn", "when": "nothing heard" }
   ],
   "features": [
-    { "id": "speech", "name": "A press becomes speech", "route": ["press", "event", "begin", "pcm"] }
+    { "id": "speech", "name": "A press becomes speech", "route": ["press", "event", "begin", "pcm", "commit", "discard"] }
   ]
 }
 ```
@@ -81,6 +93,17 @@ Rules:
 - A flow has `id`, `from`, `to`, `kind` (`data` or `control`) and `carries`, a
   short phrase for what travels or what is triggered. `from` and `to` name a
   system or a `system.part`.
+- A flow's optional `via` names the call, method or symbol where the hand-off
+  happens. It is checked by whole-word search in the source files owned by the
+  `from` system, or by the `to` system when `from` is external. A flow between
+  two external systems is not checked and needs no `via`.
+- A flow's optional `when` is a short condition ("words heard"). Flows sharing
+  a `when` in a route form one branch.
+- When a source file matches more than one system's `paths`, the pattern with
+  the longest literal text before its first `*` wins
+  (`app/Sources/Coordination/Journal*.swift` beats
+  `app/Sources/Coordination/**`). An equal-length tie is an error naming the
+  file and both systems.
 - A feature has `id`, `name` and `route`, an ordered list of flow ids.
 
 ## What MindControl does on open
@@ -92,6 +115,10 @@ Rules:
    number where one exists, and no map.
 3. **Check** against the code:
    - Anchors that match nothing mark their part **stale**.
+   - A `via` that matches nothing marks its flow **stale**, drawn amber. A flow
+     with no `via` (and an internal end) is **unverified**, drawn faint.
+     A found `via` records its first matching file and line.
+   - Overlapping `paths` resolve by the rule above. Ties are errors.
    - Flows naming an unknown system or part are listed as errors and not drawn.
      The rest of the map still draws.
    - Features naming an unknown flow are listed as errors. Their known steps
@@ -99,6 +126,11 @@ Rules:
    - Source files (the existing `SourceFilter`) not matched by any system's
      `paths` are **unmapped**. A badge shows the count; clicking it lists the
      files.
+   - **Age**: in a git project, the number of commits since `flow.json` was
+     last committed that touch any system's `paths`. Shown as "Map updated N
+     commits ago", or "Map not committed yet". Hidden outside git.
+   - **Density**: a warning past 20 systems, 8 parts in one system, or 60
+     flows, naming which limit was passed. Nothing is blocked.
 4. **Lay out** (below) and draw.
 5. **Watch** `.mindcontrol/` and reload when `flow.json` appears or changes.
 
@@ -125,8 +157,13 @@ Deterministic: the same flow file and layout file always give the same picture.
 **Look:** dark field, no star dust. Systems are rounded boxes with a soft glow.
 External systems have dashed outlines and are fainter. Data arrows are solid
 curves with pulses moving in the flow's direction. Control arrows are thin,
-dashed, and have no pulses. Stale parts are amber. Bloom and composite as
-today.
+dashed, and have no pulses. Stale parts and stale flows are amber. Unverified
+flows are drawn faint. A flow with a `when` gets a small diamond where it
+leaves its source. Bloom and composite as today.
+
+**Box size:** a system box is sized to hold its parts at every zoom level, so
+zooming never moves anything. Zoomed out, a box shows its name, its summary,
+and a faint "N parts" hint.
 
 **Zoom levels:**
 
@@ -148,6 +185,8 @@ today.
 | Double-click a part | Open its anchor file in the default app for that file |
 | Feature chip | Light up its route, dim the rest, pulse in the feature's colour, open its steps in the side panel |
 | Click a step | Move the view to that flow |
+| Click an arrow | Select it; the side panel shows what it carries and its `via` location |
+| Double-click an arrow | Open the file at its `via` line |
 | Control toggle | Show or hide control arrows |
 | ⌘F or typing | Search |
 | Esc | Clear search, then the feature or selection, then close MindControl |
@@ -158,8 +197,10 @@ On open, and on every reload, the view fits the whole map.
 from a fixed palette, in file order.
 
 **Side panel:** on the right. For a feature, a numbered list of its steps:
-"Ring → BLE link · press DOWN / UP", with control steps marked. For a system or
-part, its summary, its flows, and its files.
+"Ring → BLE link · press DOWN / UP", with control steps marked. Consecutive
+steps sharing a `when` are grouped under a header ("If words heard"). Stale and
+unverified steps are marked. For a system or part, its summary, its flows, and
+its files.
 
 ## Search
 
@@ -182,11 +223,30 @@ Claude** button. The button opens a new Lostty tab in the project root running
 - gives the flow file format and rules above
 - defines data versus control arrows
 - tells Claude to read the code and any architecture docs first
-- tells Claude to keep it to about 15 systems
+- tells Claude to find the hand-off for every flow and record it in `via`
+- tells Claude to use `when` for branches
+- tells Claude to keep within the density limits, preferring to merge systems
 - tells Claude to write `.mindcontrol/flow.json`
+- tells Claude to add this rule to the project's `CLAUDE.md`, creating the
+  file if needed: "When you change how data or control moves between systems,
+  update `.mindcontrol/flow.json`."
 
 When the file appears, the map loads by itself. If `claude` is not on the PATH,
 the button's result says so and shows the prompt with a Copy button.
+
+## Refresh with Claude
+
+Once a map exists, a **Refresh with Claude** button sits beside the age and
+density badges. It opens a new tab the same way, with a second bundled prompt:
+
+- read the current `flow.json`
+- read the commits since it was last committed (`git log -p` limited to the
+  systems' `paths`) and the files they touched
+- update the systems, flows, routes and `via`s to match
+- keep within the density limits
+- leave positions alone
+
+Outside git, the prompt reads the whole project instead.
 
 ## Code changes
 
@@ -213,7 +273,7 @@ New, each with one job:
 | Unit | Job |
 |---|---|
 | `FlowFile` | Decode and validate `flow.json`, with line-numbered errors. |
-| `FlowCheck` | Stale anchors, unknown references, unmapped files. |
+| `FlowCheck` | Stale anchors and `via`s, unknown references, path overlaps, unmapped files, age, density. |
 | `FlowLayout` | Layered layout, part layout, saved positions. |
 | `LayoutStore` | Read and write `layout.json`. |
 | `FlowSearch` | Index and rank search results. |
@@ -230,6 +290,10 @@ New, each with one job:
 | No flow file | Empty state with Draft with Claude |
 | Invalid JSON or a broken rule | Error list with line numbers; no map |
 | Stale anchor | Part drawn amber; listed in the side panel |
+| Stale `via` | Flow drawn amber; listed in the side panel |
+| Flow without `via` | Drawn faint; marked unverified |
+| Two systems tie for a file | Listed as an error naming the file and both systems; the file counts as unmapped |
+| Map past a density limit | Warning badge naming the limit |
 | Unknown system or part in a flow | Listed as an error; that flow not drawn |
 | Unknown flow in a feature route | Listed as an error; known steps still shown |
 | Unreadable `layout.json` | Ignored; automatic layout |
@@ -243,8 +307,13 @@ Unit tests:
 - `FlowFile`: valid files, each broken rule, and line numbers in errors.
 - `FlowCheck`:
   - stale type anchors and stale file anchors
+  - `via` found (with file and line), stale, unverified, and the external-end
+    rule
+  - path overlap: the more specific pattern wins; an equal tie is an error
   - unknown references
   - unmapped files, counted with `SourceFilter`
+  - age from a temporary git repo; "not committed yet"; hidden outside git
+  - each density warning at its limit
 - `FlowLayout`:
   - same input gives the same output
   - a data source sits left of what it feeds
@@ -254,7 +323,8 @@ Unit tests:
   - control flows do not move columns
 - `FlowSearch`: grouping, ranking order, and file and type resolution to a
   system or "no system".
-- Feature routes become numbered steps in order, with unknown flows reported.
+- Feature routes become numbered steps in order, with `when` groups and
+  unknown flows reported.
 - `PanZoomCamera`: zoom about a point, fit, and screen↔world round trip.
 - Renderer smoke test: draws a small map without Metal validation errors.
 
