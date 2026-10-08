@@ -61,6 +61,8 @@ typedef struct {
     float pixelScale;            // backing scale factor
     float time;                  // seconds since launch
     float fixedLevel;            // 1 in focus views: zoom levels don't hide anything
+    float systemFloor;           // 1 when there are no zone arrows: systems show at the farthest zoom
+    float pad;
 } MCFrameUniforms;
 
 typedef struct {

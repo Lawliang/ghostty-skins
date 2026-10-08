@@ -48,10 +48,13 @@ extension MindControl {
         var arrows: [MCArrowInstance] = []
         var markers: [MCMarkerInstance] = []
         var fixedLevel = false
+        /// See `MapLayout.systemFloor`.
+        var systemFloor = false
 
         static func build(layout: MapLayout, curves: [String: Curve], report: HealthReport, style: SceneStyle) -> FlowScene {
             var scene = FlowScene()
             scene.fixedLevel = layout.fixedLevel
+            scene.systemFloor = layout.systemFloor
             let health = style.mode == .health
             let featureActive = !style.litFlows.isEmpty
 

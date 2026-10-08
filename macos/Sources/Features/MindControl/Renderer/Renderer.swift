@@ -42,6 +42,7 @@ extension MindControl {
         private var arrowCount = 0
         private var markerCount = 0
         private var fixedLevel = false
+        private var systemFloor = false
         private static let arrowVertexCount = (Int(MC_ARROW_SEGMENTS) + 1) * 2
 
         init(device: MTLDevice? = MTLCreateSystemDefaultDevice()) throws {
@@ -71,6 +72,7 @@ extension MindControl {
             arrowCount = scene.arrows.count
             markerCount = scene.markers.count
             fixedLevel = scene.fixedLevel
+            systemFloor = scene.systemFloor
         }
 
         var isAnimatingCamera: Bool { cameraAnimation != nil }
@@ -142,7 +144,7 @@ extension MindControl {
             var frame = MCFrameUniforms(viewportSize: SIMD2(Float(width), Float(height)),
                                         center: SIMD2(Float(camera.center.x), Float(camera.center.y)),
                                         zoom: Float(camera.zoom), pixelScale: pixelScale, time: time,
-                                        fixedLevel: fixedLevel ? 1 : 0)
+                                        fixedLevel: fixedLevel ? 1 : 0, systemFloor: systemFloor ? 1 : 0, pad: 0)
             let frameIndex = Int(MC_BUFFER_FRAME)
             encoder.setVertexBytes(&frame, length: MemoryLayout<MCFrameUniforms>.stride, index: frameIndex)
             encoder.setFragmentBytes(&frame, length: MemoryLayout<MCFrameUniforms>.stride, index: frameIndex)

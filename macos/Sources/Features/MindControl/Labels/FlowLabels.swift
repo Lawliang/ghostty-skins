@@ -15,12 +15,13 @@ extension MindControl {
                                litFlows: Set<String>, showControl: Bool) -> [LabelCandidate] {
             let zoom = camera.zoom
             let fixed = layout.fixedLevel
+            let floor = layout.systemFloor
             func screen(_ x: CGFloat, _ y: CGFloat) -> CGPoint { camera.toScreen(CGPoint(x: x, y: y), viewSize: viewSize) }
-            let systemsShown = fixed || zoom >= ZoomLevels.zoneToSystems.lowerBound
-            let systemOpacity = fixed ? 1 : smooth(zoom, ZoomLevels.zoneToSystems)
+            let systemsShown = fixed || floor || zoom >= ZoomLevels.zoneToSystems.lowerBound
+            let systemOpacity = fixed || floor ? 1 : smooth(zoom, ZoomLevels.zoneToSystems)
             let partsShown = fixed || ZoomLevels.partsVisible(at: zoom)
             let far = !fixed && zoom < ZoomLevels.zoneToSystems.upperBound
-            let arrowLevel = ZoomLevels.arrowLevel(at: zoom)
+            let arrowLevel = ZoomLevels.arrowLevel(at: zoom, systemFloor: floor)
             var out: [LabelCandidate] = []
 
             for box in layout.boxes {

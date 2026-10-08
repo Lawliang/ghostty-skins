@@ -28,6 +28,21 @@ struct FlowLabelsTests {
         #expect(!shown.contains("PCM16 24 kHz"))
     }
 
+    /// With no zones there are no zone arrows to stand in for the systems far out, so the systems stay named.
+    @Test func farZoomWithoutZonesShowsSystemNames() throws {
+        let layout = MindControl.FlowLayout.layout(map: FlowFixtures.arcaNoZones, broken: [])
+        #expect(!layout.boxes.contains { $0.kind == .zone })
+        #expect(layout.systemFloor)
+        #expect(!self.layout.systemFloor)
+        var camera = MindControl.PanZoomCamera.fitting(layout.bounds, in: view)
+        camera.zoom = 0.15
+        let candidates = FlowLabels.candidates(layout: layout, curves: MindControl.ArrowRouter.curves(for: layout), camera: camera,
+                                               viewSize: view, litFlows: [], showControl: true)
+        let audio = try #require(candidates.first { $0.id == "audio" })
+        #expect(audio.opacity == 1)
+        #expect(!candidates.contains { $0.id == "audio.gate" })
+    }
+
     @MainActor
     @Test func farZoneNamesSitJustAboveTheirZones() throws {
         // At 0.15 a zone's name strip is 8 pt tall, so the 22 pt name goes above the zone, not over it or its neighbours.

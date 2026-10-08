@@ -76,7 +76,8 @@ says "This map has no systems yet."
   in amber, unverified as faint dashes, errors in red. The side panel lists every issue and the unmapped
   files; click one to go to it. The map moves to it and highlights it, and the list stays. The header's "Map healthy" / "N issues", unmapped count and density
   warning all open Health.
-- **Zoom levels.** Farthest out you see zones and one thick arrow per direction between them. Closer,
+- **Zoom levels.** Farthest out you see zones and one thick arrow per direction between them (on a map
+  with no zones, or no flows between them, systems keep their names and arrows instead). Closer,
   systems appear with their names and summaries, and flows between two systems merge into one arrow.
   Closer still, each system opens to show its parts, and arrows attach to the parts they connect.
   Boxes never move as you zoom. Arrow labels show up close, and always on the selected feature's route.

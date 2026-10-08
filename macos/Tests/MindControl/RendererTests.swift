@@ -182,6 +182,20 @@ struct RendererTests {
         #expect(Self.difference(drawn, background, width: 96, x: 48, y: 32) > 40)
     }
 
+    /// Far out on a map with no zone arrows, systems and their arrows stay; parts still wait for their zoom.
+    @Test(arguments: [(MC_LEVEL_SYSTEM, true), (MC_LEVEL_PART, false), (MC_LEVEL_ZONE, false)])
+    func aSystemFloorKeepsSystemsFarOut(level: Int32, visible: Bool) throws {
+        let rect = CGRect(x: -50, y: -30, width: 100, height: 60)
+        var scene = FlowScene()
+        scene.boxes = [Self.box(rect, fill: 0.4, level: level)]
+        scene.systemFloor = true
+        let camera = PanZoomCamera(center: .zero, zoom: 0.15)
+        let drawn = try Self.renderPixels(using: try Self.renderer(showing: scene, camera: camera))
+        let background = try Self.renderPixels(using: try Renderer())
+        let difference = Self.difference(drawn, background, width: 96, x: 48, y: 32)
+        #expect(visible ? difference > 40 : difference <= 1)
+    }
+
     @Test(arguments: [(Float(1), Float(0)), (0, 1), (-1, 0), (0, -1)])
     func arrowheadsPointAlongTheirArrow(dx: Float, dy: Float) throws {
         // The tip sits on the marker's position and the head trails back against its direction (y down).

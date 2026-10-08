@@ -55,6 +55,14 @@ enum FlowFixtures {
 
     static var arca: MindControl.FlowMap { map(arcaJSON) }
 
+    /// `arca` with no zones, which the format allows.
+    static var arcaNoZonesJSON: String {
+        arcaJSON.replacingOccurrences(of: #""zone": "[a-z]+", "#, with: "", options: .regularExpression)
+            .replacingOccurrences(of: #""zones": \[[^\]]*\],"#, with: "", options: .regularExpression)
+    }
+
+    static var arcaNoZones: MindControl.FlowMap { map(arcaNoZonesJSON) }
+
     /// Source files matching `arca`'s anchors and vias.
     static let arcaSources: [String: String] = [
         "app/Sources/BLE/ArcaLink.swift": "final class ArcaLink {\n    var onEvent: ((Int) -> Void)?\n    func didUpdateValue() { onEvent?(1) }\n}\n",

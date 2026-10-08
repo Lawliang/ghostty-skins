@@ -16,7 +16,7 @@ extension MindControl {
                let part = layout.boxes.last(where: { $0.kind == .part && $0.rect.contains(world) }) {
                 return .box(part.id)
             }
-            let level = ZoomLevels.arrowLevel(at: zoom)
+            let level = ZoomLevels.arrowLevel(at: zoom, systemFloor: layout.systemFloor)
             let tolerance = arrowTolerance / max(zoom, 0.01)
             var best: (id: String, distance: CGFloat)?
             for arrow in layout.arrows where (layout.fixedLevel || arrow.level == level) && (showControl || arrow.kind == .data) {

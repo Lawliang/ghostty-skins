@@ -27,6 +27,16 @@ struct FlowPickingTests {
         #expect(FlowPicking.hit(merged, layout: layout, curves: curves, zoom: 0.6, showControl: true) == .arrow("sys:audio>agent"))
     }
 
+    @Test func farOutWithoutZonesSystemArrowsAreHit() throws {
+        let flat = MindControl.FlowLayout.layout(map: FlowFixtures.arcaNoZones, broken: [])
+        let curves = MindControl.ArrowRouter.curves(for: flat)
+        let merged = try #require(curves["sys:audio>agent"]).mid
+        #expect(FlowPicking.hit(merged, layout: flat, curves: curves, zoom: 0.15, showControl: true) == .arrow("sys:audio>agent"))
+        #expect(MindControl.ZoomLevels.arrowLevel(at: 0.15, systemFloor: true) == .system)
+        #expect(MindControl.ZoomLevels.arrowLevel(at: 0.15, systemFloor: false) == .zone)
+        #expect(MindControl.ZoomLevels.arrowLevel(at: 1.2, systemFloor: true) == .part)
+    }
+
     @Test func hiddenControlArrowsAreNotHit() throws {
         let mid = try #require(curves["flow:event"]).mid
         #expect(FlowPicking.hit(mid, layout: layout, curves: curves, zoom: 1.5, showControl: true) == .arrow("flow:event"))

@@ -36,7 +36,7 @@ inline float3 linearToSRGB(float3 c) {
 static_assert(sizeof(MCBoxInstance) == 64, "MCBoxInstance layout");
 static_assert(sizeof(MCArrowInstance) == 80, "MCArrowInstance layout");
 static_assert(sizeof(MCMarkerInstance) == 48, "MCMarkerInstance layout");
-static_assert(sizeof(MCFrameUniforms) == 32, "MCFrameUniforms layout");
+static_assert(sizeof(MCFrameUniforms) == 40, "MCFrameUniforms layout");
 
 /// World point → drawable pixels, top-left origin. Matches PanZoomCamera.toScreen × pixelScale.
 inline float2 worldToPixels(float2 p, constant MCFrameUniforms& u) {
@@ -50,7 +50,7 @@ inline float4 pixelsToClip(float2 px, constant MCFrameUniforms& u) {
 /// How visible something at `level` is at the current zoom. Mirrors MindControl.ZoomLevels.
 inline float levelWeight(float level, constant MCFrameUniforms& u) {
     if (u.fixedLevel > 0.5 || level > 2.5) return 1.0;
-    float toSystems = smoothstep(0.22, 0.34, u.zoom);
+    float toSystems = u.systemFloor > 0.5 ? 1.0 : smoothstep(0.22, 0.34, u.zoom);
     float toParts = smoothstep(0.85, 1.15, u.zoom);
     if (level < 0.5) return 1.0 - toSystems;
     if (level < 1.5) return toSystems * (1.0 - toParts);

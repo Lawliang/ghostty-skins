@@ -8,8 +8,9 @@ extension MindControl {
         /// System arrows cross-fade to part arrows; part boxes fade in.
         static let systemsToParts: ClosedRange<CGFloat> = 0.85...1.15
 
-        static func arrowLevel(at zoom: CGFloat) -> MapLayout.ArrowLevel {
-            zoom < 0.28 ? .zone : zoom < 1.0 ? .system : .part
+        /// `systemFloor`: the layout has no zone arrows, so the system level reaches all the way out.
+        static func arrowLevel(at zoom: CGFloat, systemFloor: Bool = false) -> MapLayout.ArrowLevel {
+            zoom < 0.28 && !systemFloor ? .zone : zoom < 1.0 ? .system : .part
         }
 
         static func partsVisible(at zoom: CGFloat) -> Bool { zoom >= 1.0 }
@@ -78,6 +79,10 @@ extension MindControl {
         }
 
         func box(_ id: String) -> Box? { boxes.first { $0.id == id } }
+
+        /// No zone arrows (no zones, or no flows between them): nothing stands in for the systems far out, so
+        /// system names and arrows stay at the farthest zoom instead of leaving unnamed boxes and no arrows.
+        var systemFloor: Bool { !arrows.contains { $0.level == .zone } }
 
         var bounds: CGRect { boxes.reduce(CGRect.null) { $0.union($1.rect) } }
 

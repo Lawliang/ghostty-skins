@@ -19,7 +19,7 @@ struct FlowSceneTests {
         #expect(MemoryLayout<MCBoxInstance>.stride == 64)
         #expect(MemoryLayout<MCArrowInstance>.stride == 80)
         #expect(MemoryLayout<MCMarkerInstance>.stride == 48)
-        #expect(MemoryLayout<MCFrameUniforms>.stride == 32)
+        #expect(MemoryLayout<MCFrameUniforms>.stride == 40)
     }
 
     @Test func oneInstancePerBoxAndArrow() {
@@ -114,6 +114,14 @@ struct FlowSceneTests {
         #expect(brightness(scene.arrows[lit].color) > 4 * brightness(scene.arrows[unlit].color))
         #expect(scene.arrows[unlit].color.x > scene.arrows[unlit].color.z * 3, "a stale arrow off the route stays amber, only dimmer")
         #expect(scene.arrows[lit].color.x < scene.arrows[lit].color.z * 1.5, "the route keeps Health's grey, not the feature colour")
+    }
+
+    @Test func aMapWithoutZoneArrowsFloorsAtTheSystemLevel() {
+        let flat = MindControl.FlowLayout.layout(map: FlowFixtures.arcaNoZones, broken: [])
+        let scene = FlowScene.build(layout: flat, curves: MindControl.ArrowRouter.curves(for: flat), report: .init(), style: SceneStyle())
+        #expect(scene.systemFloor)
+        #expect(scene.arrows.contains { $0.level == Float(MC_LEVEL_SYSTEM) })
+        #expect(!build().systemFloor)
     }
 
     @Test func partsAndArrowsCarryTheirZoomLevel() throws {
