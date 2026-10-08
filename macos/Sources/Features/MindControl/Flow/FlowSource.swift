@@ -24,7 +24,12 @@ extension MindControl {
         func snapshot(root: URL) throws -> FlowSnapshot {
             switch self {
             case .workingTree:
-                let files = try ProjectScanner().scan(pwd: root, shouldStop: { false }).files
+                // The scanner lists files relative to the git root; make them relative to `root`
+                // when `root` is a subfolder of the repository.
+                var files = try ProjectScanner().scan(pwd: root, shouldStop: { false }).files
+                if let prefix = Self.repositoryPrefix(of: root), !prefix.isEmpty {
+                    files = files.filter { $0.hasPrefix(prefix) }.map { String($0.dropFirst(prefix.count)) }
+                }
                 let read: @Sendable (String) -> String? = { path in
                     try? String(contentsOf: root.appendingPathComponent(path), encoding: .utf8)
                 }
@@ -40,12 +45,20 @@ extension MindControl {
                 let listing = Git.run(root, ["ls-tree", "-r", "-z", "--name-only", revision]) ?? Data()
                 let files = String(decoding: listing, as: UTF8.self).split(separator: "\0").map(String.init)
                     .filter(SourceFilter.isFeatureSource).sorted()
-                let show: @Sendable (String) -> Data? = { path in Git.run(root, ["show", "\(revision):\(path)"]) }
+                // `./` makes the path relative to `root`, the same base `ls-tree` listed from.
+                let show: @Sendable (String) -> Data? = { path in Git.run(root, ["show", "\(revision):./\(path)"]) }
                 return FlowSnapshot(root: root,
                                     flowData: show(FlowFile.relativePath),
                                     layoutData: show(FlowFile.layoutRelativePath),
                                     sourceFiles: files,
                                     read: { path in show(path).map { String(decoding: $0, as: UTF8.self) } })
+            }
+        }
+
+        /// `root`'s path inside its git repository ("sub/dir/"), empty at the repository root, nil outside git.
+        private static func repositoryPrefix(of root: URL) -> String? {
+            Git.run(root, ["rev-parse", "--show-prefix"]).map {
+                String(decoding: $0, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
             }
         }
     }

@@ -27,6 +27,25 @@ struct FlowSourceTests {
         #expect(disk.read("missing.swift") == nil)
     }
 
+    @Test func subfolderOfARepositoryReadsRelativeToTheChosenFolder() throws {
+        let project = try TempProject()
+        try project.git("init", "-q")
+        for (path, contents) in FlowFixtures.arcaSources { try project.write("sub/" + path, contents) }
+        try project.write("sub/.mindcontrol/flow.json", FlowFixtures.arcaJSON)
+        try project.write("other/Elsewhere.swift", "struct Elsewhere {}\n")
+        try project.write("Root.swift", "struct Root {}\n")
+        try project.commitAll("first")
+        let sub = project.url.appendingPathComponent("sub")
+        let gate = "app/Sources/Audio/SpeechGate.swift"
+
+        for source in [FlowSource.workingTree, FlowSource.revision("HEAD")] {
+            let snapshot = try source.snapshot(root: sub)
+            #expect(snapshot.sourceFiles == FlowFixtures.arcaSources.keys.sorted(), "\(source)")
+            #expect(snapshot.flowData.map { String(decoding: $0, as: UTF8.self) } == FlowFixtures.arcaJSON, "\(source)")
+            #expect(snapshot.read(gate) == FlowFixtures.arcaSources[gate], "\(source)")
+        }
+    }
+
     @Test func missingFlowFileIsNil() throws {
         let project = try TempProject()
         try project.write("main.swift", "let x = 1\n")
