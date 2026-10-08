@@ -40,7 +40,61 @@ struct FlowFileTests {
         let found = errors(json)
         #expect(found.count == 1)
         #expect(found.first?.message.hasPrefix("Not valid JSON") == true)
-        #expect((3...6).contains(found.first?.line ?? 0))
+        #expect(found.first?.line == 4)
+    }
+
+    @Test func missingCommaBetweenMembersReportsSyntaxError() {
+        let json = "{\n  \"version\": 1\n  \"systems\": []\n}\n"
+        let found = errors(json)
+        #expect(found.count == 1)
+        #expect(found.first?.message.hasPrefix("Not valid JSON") == true)
+        #expect(found.first?.line == 3, "\(found)")
+    }
+
+    @Test func missingValueReportsSyntaxError() {
+        let json = "{\n  \"version\": ,\n  \"systems\": []\n}\n"
+        let found = errors(json)
+        #expect(found.count == 1)
+        #expect(found.first?.message.hasPrefix("Not valid JSON") == true)
+        #expect(found.first?.line == 2, "\(found)")
+    }
+
+    @Test func commasInsideStringsAreNotTrailingCommas() throws {
+        let json = "{\n  \"version\": 1,\n  \"systems\": [\n    { \"id\": \"a\", \"name\": \"x,] y,} \\\"q,]\\\" z\\\\\", \"summary\": \"ends with a slash \\\\\" }\n  ]\n}\n"
+        let map = try FlowFile.parse(Data(json.utf8)).get()
+        #expect(map.system("a")?.name == "x,] y,} \"q,]\" z\\")
+        #expect(map.system("a")?.summary == "ends with a slash \\")
+    }
+
+    @Test func duplicateIDPointsAtTheDuplicate() {
+        let json = "{\n  \"version\": 1,\n  \"systems\": [\n    { \"id\": \"a\", \"name\": \"A\" },\n    { \"id\": \"b\", \"name\": \"B\" },\n    { \"id\": \"a\", \"name\": \"A again\" }\n  ]\n}\n"
+        let found = errors(json)
+        #expect(found.count == 1)
+        #expect(found.first?.message.contains("Duplicate") == true)
+        #expect(found.first?.line == 6)
+    }
+
+    @Test func idSharedWithAnotherListDoesNotMisleadTheLine() {
+        let json = "{\n  \"version\": 1,\n  \"zones\": [\n    { \"id\": \"ring\", \"name\": \"Ring\" }\n  ],\n  \"systems\": [\n    { \"id\": \"ring\", \"name\": \"Ring\", \"zone\": \"nope\" }\n  ]\n}\n"
+        let found = errors(json)
+        #expect(found.count == 1)
+        #expect(found.first?.message.contains("unknown zone") == true)
+        #expect(found.first?.line == 7)
+    }
+
+    @Test func partErrorPointsAtThePartInTheSecondSystem() {
+        let json = "{\n  \"version\": 1,\n  \"systems\": [\n    { \"id\": \"one\", \"name\": \"One\",\n      \"parts\": [ { \"id\": \"p\", \"name\": \"P\" } ] },\n    { \"id\": \"two\", \"name\": \"Two\",\n      \"parts\": [\n        { \"id\": \"p\", \"name\": \"P\" },\n        { \"id\": \"q\" }\n      ] }\n  ]\n}\n"
+        let found = errors(json)
+        #expect(found.count == 1)
+        #expect(found.first?.message.contains("\"name\"") == true)
+        #expect(found.first?.line == 9)
+    }
+
+    @Test func errorLinesCountCRLFFiles() {
+        let json = "{\r\n  \"version\": 1,\r\n  \"systems\": [\r\n    { \"id\": \"ok\", \"name\": \"OK\" },\r\n    { \"id\": \"audio\" }\r\n  ]\r\n}\r\n"
+        let found = errors(json)
+        #expect(found.count == 1)
+        #expect(found.first?.line == 5)
     }
 
     @Test func ruleErrorPointsAtTheItemsLine() {
